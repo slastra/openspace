@@ -71,12 +71,19 @@ export function startGame({ renderer, input, net }: GameDeps) {
   const debug = new DebugOverlay(renderer.world);
 
   // Track an estimate of (clientNow - serverNow) so we can timestamp samples
-  // and render in the same clock domain. Anchor at the *minimum* offset seen.
+  // and render in the same clock domain. Fast-attack / slow-decay: a slower
+  // arrival immediately raises the offset (so renderTime stays behind even
+  // jittery snapshots and the interp buffer keeps headroom); when conditions
+  // improve, the estimate gradually relaxes toward the typical transit. The
+  // older "forever min" approach pinned to the lowest-RTT sample seen and
+  // caused remote entities to freeze whenever transit exceeded that floor.
   let serverOffset: number | null = null;
   const updateOffset = (snapServerTime: number) => {
     const offset = performance.now() - snapServerTime;
-    if (serverOffset === null || offset < serverOffset) {
+    if (serverOffset === null || offset > serverOffset) {
       serverOffset = offset;
+    } else {
+      serverOffset = serverOffset * 0.99 + offset * 0.01;
     }
   };
 

@@ -23,6 +23,12 @@ export interface RemoteSnapshot {
 
 const MAX_HISTORY = 20;
 
+/** When renderTime overruns the newest snapshot, extrapolate from the last
+ *  two for up to this many ms. Beyond this we freeze at the newest sample
+ *  rather than drift further from authority. ~100ms is the Source-engine
+ *  default and Fiedler's recommended cap. */
+const MAX_EXTRAPOLATION_MS = 100;
+
 export class RemoteInterpolator {
   private history: RemoteSnapshot[] = [];
   private color = "#ffffff";
@@ -77,10 +83,26 @@ export class RemoteInterpolator {
       }
     }
 
-    // We're past the newest snapshot — return the newest as a static fallback.
-    // Extrapolation could be added here later if needed.
-    const s = this.history[this.history.length - 1]!;
-    return { x: s.x, y: s.y, rotation: s.rotation };
+    // We're past the newest snapshot — extrapolate from the last two
+    // samples' velocity, capped so we don't fly far from authority. Beyond
+    // the cap we freeze at the newest sample. Rotation is *not* extrapolated
+    // (angular extrapolation looks broken on hard turns; freezing reads
+    // better and corrects within 100ms when the next snapshot lands).
+    const newest = this.history[this.history.length - 1]!;
+    const ahead = renderTime - newest.t;
+    if (this.history.length < 2 || ahead > MAX_EXTRAPOLATION_MS) {
+      return { x: newest.x, y: newest.y, rotation: newest.rotation };
+    }
+    const prev = this.history[this.history.length - 2]!;
+    const span = newest.t - prev.t;
+    if (span <= 0) return { x: newest.x, y: newest.y, rotation: newest.rotation };
+    const vx = (newest.x - prev.x) / span;
+    const vy = (newest.y - prev.y) / span;
+    return {
+      x: newest.x + vx * ahead,
+      y: newest.y + vy * ahead,
+      rotation: newest.rotation,
+    };
   }
 }
 
