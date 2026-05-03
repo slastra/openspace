@@ -79,7 +79,7 @@ export class LocalPlayer {
     speedMultiplier: number = 1,
   ): { inputs: PlayerInput[]; x: number; y: number; rotation: number } {
     const inputs = this.prediction.step(dt, target, speedMultiplier);
-    this.prediction.advanceDisplay();
+    this.prediction.advanceDisplay(dt);
     const pos = this.prediction.position;
     const rotation = this.prediction.rotation;
     this.ship.container.x = pos.x;

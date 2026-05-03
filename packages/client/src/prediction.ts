@@ -9,6 +9,9 @@ import {
   stepPlayer,
 } from "@openspace/shared";
 
+/** Decay rate (per second) for the reconcile error vector. Half-life = ln2 / rate ≈ 87ms. */
+const RECONCILE_ERROR_DECAY_RATE = 8;
+
 /** Obstacle the predictor knows about (currently only asteroids). */
 export interface PredictedObstacle {
   x: number;
@@ -56,10 +59,20 @@ export class LocalPrediction {
   private curRot = 0;
 
   // Position/rotation we actually render — derived from prev/cur and the
-  // accumulator each frame.
+  // accumulator each frame, then offset by the decaying error vector.
   private displayX: number;
   private displayY: number;
   private displayRot = 0;
+
+  // Error-smoothing reconcile: when a server correction lands, the sim
+  // (prev/cur) jumps to authority and the visible delta is absorbed into
+  // this error vector, which decays toward zero each frame. Avoids the
+  // "pop" that snap-reconcile produces under variable network jitter.
+  // Half-life ~87ms (rate 8/sec) — fast enough to feel responsive,
+  // slow enough to hide single-snapshot wobble.
+  private errorX = 0;
+  private errorY = 0;
+  private errorRot = 0;
 
   private lastAckSeq = 0;
   private getObstacles: ObstacleProvider;
@@ -126,13 +139,30 @@ export class LocalPrediction {
 
   /**
    * Compute the rendered position from the simulation. Called every frame.
-   * Display = lerp(prev, cur, accumulator / TICK_DT).
+   * Display = sim(prev → cur) − decaying error.
    */
-  advanceDisplay() {
+  advanceDisplay(dtSeconds: number = 0) {
     const alpha = clamp01(this.accumulator / TICK_DT);
-    this.displayX = lerp(this.prevX, this.curX, alpha);
-    this.displayY = lerp(this.prevY, this.curY, alpha);
-    this.displayRot = lerpAngle(this.prevRot, this.curRot, alpha);
+    const simX = lerp(this.prevX, this.curX, alpha);
+    const simY = lerp(this.prevY, this.curY, alpha);
+    const simRot = lerpAngle(this.prevRot, this.curRot, alpha);
+
+    // Frame-rate-independent decay: error *= exp(-rate * dt).
+    if (dtSeconds > 0) {
+      const decay = Math.exp(-RECONCILE_ERROR_DECAY_RATE * dtSeconds);
+      this.errorX *= decay;
+      this.errorY *= decay;
+      this.errorRot *= decay;
+      // Snap the error to zero once it's imperceptible — avoids a long
+      // exponential tail and lets the display equal the sim exactly.
+      if (Math.abs(this.errorX) < 0.01) this.errorX = 0;
+      if (Math.abs(this.errorY) < 0.01) this.errorY = 0;
+      if (Math.abs(this.errorRot) < 0.001) this.errorRot = 0;
+    }
+
+    this.displayX = simX - this.errorX;
+    this.displayY = simY - this.errorY;
+    this.displayRot = simRot - this.errorRot;
   }
 
   /**
@@ -161,8 +191,11 @@ export class LocalPrediction {
     const drift = Math.hypot(state.x - this.curX, state.y - this.curY);
 
     if (drift > RECONCILE_SNAP_THRESHOLD) {
-      // Large desync — collapse prev/cur/display to the new state so the
-      // next interpolation has nothing to slide.
+      // Large desync (respawn, teleport, big collision) — snap visibly and
+      // zero the error so we don't leave a trail.
+      this.errorX = 0;
+      this.errorY = 0;
+      this.errorRot = 0;
       this.prevX = state.x;
       this.prevY = state.y;
       this.prevRot = state.rotation;
@@ -170,11 +203,16 @@ export class LocalPrediction {
       this.displayY = state.y;
       this.displayRot = state.rotation;
     } else {
-      // Small drift — anchor prev to the current display so the in-progress
-      // interpolation still ends at the corrected target without a jump.
-      this.prevX = this.displayX;
-      this.prevY = this.displayY;
-      this.prevRot = this.displayRot;
+      // Small drift — jump the simulation straight to authority, but absorb
+      // the visual delta into the error vector so the rendered ship doesn't
+      // move this frame. The error decays over ~90ms in advanceDisplay,
+      // walking the display smoothly to the corrected position.
+      this.errorX = state.x - this.displayX;
+      this.errorY = state.y - this.displayY;
+      this.errorRot = shortestAngleDelta(this.displayRot, state.rotation);
+      this.prevX = state.x;
+      this.prevY = state.y;
+      this.prevRot = state.rotation;
     }
     this.curX = state.x;
     this.curY = state.y;
@@ -209,6 +247,15 @@ export class LocalPrediction {
  * If two asteroids overlap a single resolution might wedge the player; in
  * practice spawn placement keeps them well apart so it's not a concern.
  */
+/** Shortest signed angular delta from `from` → `to`, in (-π, π]. */
+function shortestAngleDelta(from: number, to: number): number {
+  const TAU = Math.PI * 2;
+  let d = (to - from) % TAU;
+  if (d > Math.PI) d -= TAU;
+  else if (d <= -Math.PI) d += TAU;
+  return d;
+}
+
 function resolveObstacles(
   x: number,
   y: number,
