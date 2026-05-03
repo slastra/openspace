@@ -203,13 +203,22 @@ export class LocalPrediction {
       this.displayY = state.y;
       this.displayRot = state.rotation;
     } else {
-      // Small drift — jump the simulation straight to authority, but absorb
-      // the visual delta into the error vector so the rendered ship doesn't
-      // move this frame. The error decays over ~90ms in advanceDisplay,
-      // walking the display smoothly to the corrected position.
-      this.errorX = state.x - this.displayX;
-      this.errorY = state.y - this.displayY;
-      this.errorRot = shortestAngleDelta(this.displayRot, state.rotation);
+      // Small drift — jump the simulation straight to authority, but record
+      // the *current live* display offset as error so the rendered ship
+      // doesn't move this frame. liveDisplay must be recomputed from the
+      // pre-reconcile sim with the current accumulator alpha, NOT read from
+      // this.displayX (which is one frame stale and would re-inject lag,
+      // making error compound across snapshots instead of converging).
+      const alpha = clamp01(this.accumulator / TICK_DT);
+      const liveSimX = lerp(this.prevX, this.curX, alpha);
+      const liveSimY = lerp(this.prevY, this.curY, alpha);
+      const liveSimRot = lerpAngle(this.prevRot, this.curRot, alpha);
+      const liveDisplayX = liveSimX - this.errorX;
+      const liveDisplayY = liveSimY - this.errorY;
+      const liveDisplayRot = liveSimRot - this.errorRot;
+      this.errorX = state.x - liveDisplayX;
+      this.errorY = state.y - liveDisplayY;
+      this.errorRot = shortestAngleDelta(liveDisplayRot, state.rotation);
       this.prevX = state.x;
       this.prevY = state.y;
       this.prevRot = state.rotation;
