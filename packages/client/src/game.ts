@@ -411,10 +411,11 @@ export function startGame({ renderer, input, net }: GameDeps) {
 
     if (local) {
       if (local.hp > 0) {
-        // While in placement mode the cursor doubles as the ghost position;
-        // freeze the ship by pointing input at its own current location
-        // (inside the player's input deadzone → zero desired velocity).
-        const target = placing
+        // While in placement or recycle mode the cursor is the targeting
+        // reticle, not a steering input; freeze the ship by pointing input
+        // at its own current location (inside the input deadzone → zero
+        // desired velocity).
+        const target = placing || recycling
           ? local.prediction.position
           : cursorTarget(local, input, renderer);
         // Local key state drives prediction immediately for snappy feel; the
