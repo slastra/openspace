@@ -83,7 +83,7 @@ export const INTERPOLATION_DELAY_MS = 150;
 export const RECONCILE_SNAP_THRESHOLD = 2;
 
 /** Number of asteroids the room maintains in the field. */
-export const ASTEROID_COUNT = 36;
+export const ASTEROID_COUNT = 108;
 /** HP of a fresh asteroid; mining damage chips this down. */
 export const ASTEROID_HP = 60;
 /** Collision radius (also visual radius) of an asteroid. */
@@ -116,7 +116,7 @@ export const ASTEROID_TIERS: AsteroidTier[] = [
   { radius: 22, hp: 40, weight: 30 }, // small
   { radius: 32, hp: 75, weight: 25 }, // medium
   { radius: 50, hp: 160, weight: 15 }, // large
-  { radius: 126, hp: 800, weight: 5 }, // giant — rare, very juicy
+  { radius: 252, hp: 2400, weight: 5 }, // giant — rare, very juicy
 ];
 /** Mining DPS the player ship itself contributes when parked on an asteroid.
  *  Intentionally far below MINER.miningDps so dedicated miners stay worth buying. */
