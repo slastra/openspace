@@ -54,10 +54,15 @@ export interface UnitKindMeta {
   repairHps?: number;
   /** How far this unit can reach a friendly target to heal it. */
   repairRange?: number;
+  /** Max rotation rate (radians/sec) when present — unit's facing lerps toward
+   *  desired aim angle at this rate instead of snapping. Hitscan abilities also
+   *  gate on rotation alignment so the unit must physically face its target
+   *  before firing (turret-like delay). Omitted = snap to desired angle. */
+  rotationRateRadPerSec?: number;
 }
 
 export const RAMMER: UnitKindMeta = {
-  cost: 3,
+  cost: 6,
   supplyCost: 1,
   maxHp: 30,
   maxShield: 0,
@@ -105,7 +110,7 @@ export const MINER: UnitKindMeta = {
  * watches for that rising edge to render the beam visual.
  */
 export const LASER: UnitKindMeta = {
-  cost: 12,
+  cost: 10,
   supplyCost: 2,
   maxHp: 40,
   maxShield: 0,
@@ -119,6 +124,10 @@ export const LASER: UnitKindMeta = {
   abilityRange: 560,
   abilityCooldownSeconds: 1.6,
   abilityDamage: 12,
+  // Turret-like aim delay: barrel swings toward target at ~286°/sec and only
+  // fires once aligned. Means the laser can't track a strafing rammer point-
+  // blank and has to physically reorient when its parent ship moves.
+  rotationRateRadPerSec: 5,
   // Capacitor blowout — modest pop.
   explodeRadius: 35,
   explodeDamage: 6,
@@ -130,19 +139,19 @@ export const LASER: UnitKindMeta = {
  * shots can be juked at long range. Cheaper too.
  */
 export const GUNNER: UnitKindMeta = {
-  cost: 10,
+  cost: 9,
   supplyCost: 2,
   maxHp: 35,
   maxShield: 0,
   contactRadius: 9,
   attackSpeed: 300,
   formationSpeed: 500,
-  aggroRadius: 360,
-  releaseRadius: 440,
-  abilityRange: 280,
+  aggroRadius: 460,
+  releaseRadius: 540,
+  abilityRange: 400,
   abilityCooldownSeconds: 0.55,
   abilityDamage: 8,
-  projectileSpeed: 700,
+  projectileSpeed: 950,
   // Ammo cookoff.
   explodeRadius: 40,
   explodeDamage: 8,

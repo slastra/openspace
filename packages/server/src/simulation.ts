@@ -30,9 +30,11 @@ import {
   isNeutral,
   isPlayer,
   isStructure,
+  isUnit,
   lookupCombatant,
   nearestEnemy,
   playerDesiredVelocity,
+  shortestAngleDelta,
   stationTarget,
   teamOf,
   UNIT_KIND_META,
@@ -425,7 +427,17 @@ function readBackUnits(state: ArenaState, bodyRefs: Map<string, BodyRef>) {
       }
     }
     if (aimX !== null && aimY !== null && (aimX !== 0 || aimY !== 0)) {
-      unit.rotation = Math.atan2(aimY, aimX);
+      const desired = Math.atan2(aimY, aimX);
+      const meta = UNIT_KIND_META[unit.kind];
+      const rate = meta?.rotationRateRadPerSec;
+      if (rate !== undefined) {
+        // Turret-style: rotate toward desired at capped angular speed.
+        const delta = shortestAngleDelta(unit.rotation, desired);
+        const maxStep = rate * TICK_DT;
+        unit.rotation += clamp(delta, -maxStep, maxStep);
+      } else {
+        unit.rotation = desired;
+      }
     }
   }
 }
@@ -503,6 +515,18 @@ function resolveCollisions(
     const dmg = impactDamage(relSpeed);
     applyDamage(a, dmg);
     applyDamage(b, dmg);
+    // Rammers carry a payload — any cross-team contact detonates them. The
+    // existing `runExplosions` pass picks up the dead rammer this same tick
+    // and applies its `explodeRadius`/`explodeDamage` AOE (with chain
+    // reactions). The client visual auto-fires from the death event.
+    if (isUnit(a) && a.kind === "rammer") {
+      a.shield = 0;
+      a.hp = 0;
+    }
+    if (isUnit(b) && b.kind === "rammer") {
+      b.shield = 0;
+      b.hp = 0;
+    }
     // Cross-team contact: each combatant's attacker is the other side's team.
     if (isPlayer(a)) lastAttackerByVictim.set(a.id, teamOf(b));
     if (isPlayer(b)) lastAttackerByVictim.set(b.id, teamOf(a));
@@ -578,11 +602,25 @@ function runUnitAbilities(state: ArenaState, ctx: SimContext) {
     if (meta.projectileSpeed && meta.projectileSpeed > 0) {
       spawnProjectile(state, ctx, unit, target.x, target.y, meta.projectileSpeed, dmg, range);
     } else {
+      // Hitscan kinds with a turret-style aim delay can only fire when their
+      // current rotation lines up with the target — otherwise the visual beam
+      // would emerge from the side of the body. Cooldown stays at 0 so the
+      // shot fires the instant the barrel finishes swinging into position.
+      if (meta.rotationRateRadPerSec !== undefined) {
+        const aimAngle = Math.atan2(dy, dx);
+        if (Math.abs(shortestAngleDelta(unit.rotation, aimAngle)) > FIRE_ALIGNMENT_TOLERANCE) {
+          continue;
+        }
+      }
       damage(target, dmg, unit.ownerId, ctx);
     }
     unit.cooldown = cd;
   }
 }
+
+/** Hitscan kinds with `rotationRateRadPerSec` only fire when their facing is
+ *  within this many radians (~8.6°) of the target direction. */
+const FIRE_ALIGNMENT_TOLERANCE = 0.15;
 
 /**
  * Per-tick combat-structure pass. Each structure with `abilityRange +

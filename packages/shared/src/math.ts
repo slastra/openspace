@@ -23,3 +23,12 @@ export function lerpAngle(a: number, b: number, t: number): number {
   while (d < -Math.PI) d += Math.PI * 2;
   return a + d * t;
 }
+
+/** Shortest signed angular delta from `from` → `to`, in (-π, π]. */
+export function shortestAngleDelta(from: number, to: number): number {
+  const TAU = Math.PI * 2;
+  let d = (to - from) % TAU;
+  if (d > Math.PI) d -= TAU;
+  else if (d <= -Math.PI) d += TAU;
+  return d;
+}

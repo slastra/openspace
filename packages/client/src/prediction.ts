@@ -6,6 +6,7 @@ import {
   clamp01,
   lerp,
   lerpAngle,
+  shortestAngleDelta,
   stepPlayer,
 } from "@openspace/shared";
 
@@ -262,15 +263,6 @@ export class LocalPrediction {
  * If two asteroids overlap a single resolution might wedge the player; in
  * practice spawn placement keeps them well apart so it's not a concern.
  */
-/** Shortest signed angular delta from `from` → `to`, in (-π, π]. */
-function shortestAngleDelta(from: number, to: number): number {
-  const TAU = Math.PI * 2;
-  let d = (to - from) % TAU;
-  if (d > Math.PI) d -= TAU;
-  else if (d <= -Math.PI) d += TAU;
-  return d;
-}
-
 function resolveObstacles(
   x: number,
   y: number,
