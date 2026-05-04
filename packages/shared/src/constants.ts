@@ -80,7 +80,13 @@ export const GRID_COLOR = 0x103040;
 export const GRID_SPACING = 100;
 
 export const INTERPOLATION_DELAY_MS = 150;
-export const RECONCILE_SNAP_THRESHOLD = 2;
+/** Drift between local prediction and server authority above which we snap
+ *  the visible position rather than smooth-correct via the error vector.
+ *  Tuned for VPS RTT: at PLAYER_SPEED 300 u/s with ~30ms one-way latency,
+ *  steady-state drift while moving is ~9u just from network lag — that's
+ *  not a desync, it's the fundamental client-server gap. The snap branch
+ *  is reserved for *real* desyncs (respawn teleport, hard collisions). */
+export const RECONCILE_SNAP_THRESHOLD = 60;
 
 /** Number of asteroids the room maintains in the field. */
 export const ASTEROID_COUNT = 108;

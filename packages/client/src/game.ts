@@ -96,13 +96,17 @@ export function startGame({ renderer, input, net }: GameDeps) {
     } else {
       serverOffset = serverOffset * 0.99 + offset * 0.01;
     }
-    pushBounded(offsetSamples, offset, 60);
+    // Sample once per distinct snapshot — Colyseus delivers each entity in
+    // a snapshot through its own callback, so multiple updateOffset calls
+    // share the same `now` AND `snapServerTime`. Recording one sample per
+    // entity collapses the variance to zero (RTT spread always shows 0).
     if (snapServerTime !== lastSeenServerTime) {
       if (lastSeenServerTime !== 0) {
         pushBounded(snapshotIntervals, snapServerTime - lastSeenServerTime, 60);
       }
       lastSeenServerTime = snapServerTime;
       pushBounded(snapshotArrivalTimes, now, 60);
+      pushBounded(offsetSamples, offset, 60);
     }
   };
 
