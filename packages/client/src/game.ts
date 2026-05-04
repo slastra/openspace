@@ -528,48 +528,27 @@ export function startGame({ renderer, input, net }: GameDeps) {
     hud.modeHint = recycling ? "RECYCLE — click a structure to reclaim" : "";
 
     pushHudUpdates(units, structures, local, net.sessionId, placing);
-    pushLeaderboard(units, local, remotes, net.sessionId);
+    pushLeaderboard(net);
     hud.isDead = local !== null && local.hp <= 0;
   });
 }
 
 /**
- * Build a leaderboard entry for every player in the room (local + remotes),
- * counting their owned units once. Pushed each frame; Svelte's signal
- * equality drops the assign when the array reference compares equal — but
- * we always allocate a fresh array since members/rank shift constantly.
+ * Build the rank list from the server-broadcast leaderboard map. Counts are
+ * authoritative on the server and survive AOI filtering — without that we'd
+ * miss every unit a far-away player owns. Walk is O(players) per frame
+ * (≤ MAX_PLAYERS_PER_ROOM), so re-allocating each frame is fine.
  */
-function pushLeaderboard(
-  units: Map<string, Unit>,
-  local: LocalPlayer | null,
-  remotes: Map<string, RemotePlayer>,
-  localSessionId: string,
-) {
-  const ranks = new Map<string, number>();
-  for (const u of units.values()) {
-    ranks.set(u.ownerId, (ranks.get(u.ownerId) ?? 0) + 1);
-  }
-  const entries: LeaderboardEntry[] = [];
-  if (local) {
-    entries.push({
-      id: localSessionId,
-      name: local.name,
-      color: local.color,
-      rank: ranks.get(localSessionId) ?? 0,
-      isLocal: true,
-      isDead: local.hp <= 0,
-    });
-  }
-  for (const r of remotes.values()) {
-    entries.push({
-      id: r.id,
-      name: r.name,
-      color: r.color,
-      rank: ranks.get(r.id) ?? 0,
-      isLocal: false,
-      isDead: r.hp <= 0,
-    });
-  }
+function pushLeaderboard(net: NetClient) {
+  const board = net.getLeaderboard();
+  const entries: LeaderboardEntry[] = board.map((e) => ({
+    id: e.id,
+    name: e.name,
+    color: e.color,
+    rank: e.unitCount,
+    isLocal: e.id === net.sessionId,
+    isDead: e.isDead,
+  }));
   entries.sort((a, b) => b.rank - a.rank || a.name.localeCompare(b.name));
   hud.players = entries;
 }

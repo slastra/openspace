@@ -1,6 +1,9 @@
 import RAPIER from "@dimforge/rapier2d-compat";
 import { Client, Room } from "colyseus";
+import { StateView } from "@colyseus/schema";
 import {
+  AOI_HYSTERESIS_U,
+  AOI_RADIUS_U,
   ASTEROID_COUNT,
   ASTEROID_MIN_SPACING,
   ASTEROID_RESPAWN_DELAY_MS,
@@ -11,6 +14,7 @@ import {
   Asteroid,
   BuildStructureMessage,
   CREDITS_PER_ASTEROID_HP,
+  LeaderboardEntry,
   MAX_PLAYERS_PER_ROOM,
   MAX_STRUCTURES_PER_PLAYER,
   MAX_UNITS_PER_PLAYER,
@@ -69,6 +73,11 @@ export class ArenaRoom extends Room<ArenaState> {
   private lastUnitSpawnAt = new Map<string, number>();
   /** Wall-clock timestamps at which a fresh asteroid should spawn. */
   private pendingAsteroidRespawnAt: number[] = [];
+  /** Per-client previously-visible entity-id set. Used to apply hysteresis
+   *  on AOI: an entity stays visible until it's past `AOI_RADIUS_U +
+   *  AOI_HYSTERESIS_U` so units skating along the boundary don't pop in
+   *  and out every few ticks. */
+  private visibleByClient = new Map<string, Set<string>>();
   /** Mutable per-tick side tables threaded into `simulateTick`. */
   private simCtx: SimContext = {
     creditAccrual: new Map(),
@@ -262,6 +271,12 @@ export class ArenaRoom extends Room<ArenaState> {
 
     this.state.players.set(client.sessionId, player);
     this.inputQueues.set(client.sessionId, []);
+    // Per-client view: every entity map in ArenaState is view-filtered, so
+    // without a view the client receives nothing. recomputeViews() in the
+    // tick loop populates it with everything inside AOI of this player's
+    // ship plus their own owned entities.
+    client.view = new StateView();
+    this.visibleByClient.set(client.sessionId, new Set());
 
     const ref = addCombatantBody(this.physics, {
       entityId: client.sessionId,
@@ -284,8 +299,10 @@ export class ArenaRoom extends Room<ArenaState> {
       this.bodyRefs.delete(client.sessionId);
     }
     this.state.players.delete(client.sessionId);
+    this.state.leaderboard.delete(client.sessionId);
     this.inputQueues.delete(client.sessionId);
     this.lastUnitSpawnAt.delete(client.sessionId);
+    this.visibleByClient.delete(client.sessionId);
     this.simCtx.creditAccrual.delete(client.sessionId);
     this.simCtx.lastAttackerByVictim.delete(client.sessionId);
     this.simCtx.pendingRespawnSet.delete(client.sessionId);
@@ -364,6 +381,151 @@ export class ArenaRoom extends Room<ArenaState> {
         }
       }
       this.pendingAsteroidRespawnAt = kept ?? [];
+    }
+    this.recomputeLeaderboard();
+    this.recomputeViews();
+  }
+
+  /**
+   * Refresh the leaderboard MapSchema from authoritative state. Runs every
+   * tick — it's small (≤ MAX_PLAYERS_PER_ROOM entries) and clients use it
+   * for the rank list and minimap legends, neither of which can derive
+   * counts from the AOI-filtered units map.
+   */
+  private recomputeLeaderboard() {
+    const unitCounts = new Map<string, number>();
+    for (const u of this.state.units.values()) {
+      if (u.wreckageId) continue;
+      unitCounts.set(u.ownerId, (unitCounts.get(u.ownerId) ?? 0) + 1);
+    }
+    for (const [sessionId, player] of this.state.players) {
+      let entry = this.state.leaderboard.get(sessionId);
+      if (!entry) {
+        entry = new LeaderboardEntry();
+        entry.id = sessionId;
+        this.state.leaderboard.set(sessionId, entry);
+      }
+      // Only assign when changed — Colyseus dirty-tracking is field-level,
+      // and most ticks only `unitCount` shifts. Skipping no-op writes keeps
+      // the patch stream small.
+      if (entry.name !== player.name) entry.name = player.name;
+      if (entry.color !== player.color) entry.color = player.color;
+      if (entry.deathCount !== player.deathCount) entry.deathCount = player.deathCount;
+      const isDead = player.hp <= 0;
+      if (entry.isDead !== isDead) entry.isDead = isDead;
+      const count = unitCounts.get(sessionId) ?? 0;
+      if (entry.unitCount !== count) entry.unitCount = count;
+    }
+  }
+
+  /**
+   * Per-client AOI: walk every connected client, compute which entities lie
+   * within `AOI_RADIUS_U` of their ship (with a small hysteresis band so
+   * boundary-skating entities don't flicker), and update the client's
+   * StateView accordingly. Entities outside the view aren't encoded into
+   * that client's snapshot patches.
+   *
+   * Always-visible: the client's own ship, owned units, and owned structures
+   * (so the camera entourage doesn't pop in/out as the ship moves).
+   */
+  private recomputeViews() {
+    const grids = this.simCtx.grids;
+    const radius = AOI_RADIUS_U;
+    const radiusSq = radius * radius;
+    const outerSq = (radius + AOI_HYSTERESIS_U) * (radius + AOI_HYSTERESIS_U);
+
+    for (const client of this.clients) {
+      const view = client.view;
+      if (!view) continue;
+      const sessionId = client.sessionId;
+      const player = this.state.players.get(sessionId);
+      if (!player) continue;
+
+      const prev = this.visibleByClient.get(sessionId) ?? new Set<string>();
+      const next = new Set<string>();
+
+      // Own player + own units + own structures are always visible.
+      view.add(player);
+      next.add(sessionId);
+      for (const u of this.state.units.values()) {
+        if (u.ownerId !== sessionId) continue;
+        if (!prev.has(u.id)) view.add(u);
+        next.add(u.id);
+      }
+      for (const s of this.state.structures.values()) {
+        if (s.ownerId !== sessionId) continue;
+        if (!prev.has(s.id)) view.add(s);
+        next.add(s.id);
+      }
+
+      // Other entities — gated on AOI radius. Hysteresis: an entity that
+      // was visible last tick stays visible until it crosses the outer
+      // band. We query at outer radius and re-check below.
+      grids.combatants.forEachInRadius(player.x, player.y, radius + AOI_HYSTERESIS_U, (c) => {
+        if (next.has(c.id)) return;
+        const dx = c.x - player.x;
+        const dy = c.y - player.y;
+        const d2 = dx * dx + dy * dy;
+        const wasVisible = prev.has(c.id);
+        const visible = wasVisible ? d2 <= outerSq : d2 <= radiusSq;
+        if (!visible) return;
+        if (!wasVisible) view.add(c);
+        next.add(c.id);
+      });
+
+      // Asteroids: same AOI gate, simpler (no team filter).
+      grids.asteroids.forEachInRadius(player.x, player.y, radius + AOI_HYSTERESIS_U, (a) => {
+        if (next.has(a.id)) return;
+        const dx = a.x - player.x;
+        const dy = a.y - player.y;
+        const d2 = dx * dx + dy * dy;
+        const wasVisible = prev.has(a.id);
+        const visible = wasVisible ? d2 <= outerSq : d2 <= radiusSq;
+        if (!visible) return;
+        if (!wasVisible) view.add(a);
+        next.add(a.id);
+      });
+
+      // Projectiles + wreckages aren't in the spatial grid (transient /
+      // sparse). Linear walk — projectile cap is small (~600) so this stays
+      // cheap; a dedicated grid is overkill at this scale.
+      for (const [id, p] of this.state.projectiles) {
+        if (next.has(id)) continue;
+        const dx = p.x - player.x;
+        const dy = p.y - player.y;
+        const d2 = dx * dx + dy * dy;
+        const wasVisible = prev.has(id);
+        const visible = wasVisible ? d2 <= outerSq : d2 <= radiusSq;
+        if (!visible) continue;
+        if (!wasVisible) view.add(p);
+        next.add(id);
+      }
+      for (const [id, w] of this.state.wreckages) {
+        if (next.has(id)) continue;
+        const dx = w.x - player.x;
+        const dy = w.y - player.y;
+        const d2 = dx * dx + dy * dy;
+        const wasVisible = prev.has(id);
+        const visible = wasVisible ? d2 <= outerSq : d2 <= radiusSq;
+        if (!visible) continue;
+        if (!wasVisible) view.add(w);
+        next.add(id);
+      }
+
+      // Anything that was visible last tick but isn't this tick — remove
+      // from the view. The `next` set is authoritative for this tick.
+      for (const id of prev) {
+        if (next.has(id)) continue;
+        const ent =
+          this.state.players.get(id) ??
+          this.state.units.get(id) ??
+          this.state.structures.get(id) ??
+          this.state.asteroids.get(id) ??
+          this.state.projectiles.get(id) ??
+          this.state.wreckages.get(id);
+        if (ent) view.remove(ent);
+      }
+      this.visibleByClient.set(sessionId, next);
     }
   }
 

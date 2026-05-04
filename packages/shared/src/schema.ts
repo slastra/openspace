@@ -365,6 +365,41 @@ defineTypes(Wreckage, {
   expiresAt: "number",
 });
 
+/**
+ * Compact per-player roll-up sent to every client (NOT view-filtered) so
+ * the leaderboard, kill counts, and minimap legends keep working even
+ * when AOI hides the actual unit objects from a far-away client. Server
+ * updates this map each tick from authoritative `state.players` /
+ * `state.units` walks.
+ */
+export class LeaderboardEntry extends Schema {
+  declare id: string;
+  declare name: string;
+  declare color: string;
+  declare unitCount: number;
+  declare deathCount: number;
+  declare isDead: boolean;
+
+  constructor() {
+    super();
+    this.id = "";
+    this.name = "";
+    this.color = "#ffffff";
+    this.unitCount = 0;
+    this.deathCount = 0;
+    this.isDead = false;
+  }
+}
+
+defineTypes(LeaderboardEntry, {
+  id: "string",
+  name: "string",
+  color: "string",
+  unitCount: "uint16",
+  deathCount: "uint32",
+  isDead: "boolean",
+});
+
 export class ArenaState extends Schema {
   declare players: MapSchema<Player>;
   declare units: MapSchema<Unit>;
@@ -372,6 +407,8 @@ export class ArenaState extends Schema {
   declare projectiles: MapSchema<Projectile>;
   declare structures: MapSchema<Structure>;
   declare wreckages: MapSchema<Wreckage>;
+  /** Always-visible per-player roll-up; survives AOI filtering. */
+  declare leaderboard: MapSchema<LeaderboardEntry>;
   declare serverTime: number;
 
   constructor() {
@@ -382,16 +419,24 @@ export class ArenaState extends Schema {
     this.projectiles = new MapSchema<Projectile>();
     this.structures = new MapSchema<Structure>();
     this.wreckages = new MapSchema<Wreckage>();
+    this.leaderboard = new MapSchema<LeaderboardEntry>();
     this.serverTime = 0;
   }
 }
 
+// view: true marks each entity map as per-client-filtered. The Colyseus
+// encoder only emits patches for entities the client's StateView has
+// .add()-ed. Server-side recomputeViews() in ArenaRoom decides what's
+// visible each tick using the spatial grid + AOI radius + hysteresis.
+// `leaderboard` is intentionally NOT view-filtered so distant players
+// still appear on the rank list and minimap legend.
 defineTypes(ArenaState, {
-  players: { map: Player },
-  units: { map: Unit },
-  asteroids: { map: Asteroid },
-  projectiles: { map: Projectile },
-  structures: { map: Structure },
-  wreckages: { map: Wreckage },
+  players: { map: Player, view: true },
+  units: { map: Unit, view: true },
+  asteroids: { map: Asteroid, view: true },
+  projectiles: { map: Projectile, view: true },
+  structures: { map: Structure, view: true },
+  wreckages: { map: Wreckage, view: true },
+  leaderboard: { map: LeaderboardEntry },
   serverTime: "number",
 });

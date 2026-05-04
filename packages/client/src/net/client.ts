@@ -4,6 +4,7 @@ import {
   ArenaState,
   Asteroid,
   BuildStructureMessage,
+  LeaderboardEntry,
   RecycleStructureMessage,
   Player,
   PlayerInput,
@@ -99,6 +100,15 @@ export interface ProjectileSnapshot {
   serverTime: number;
 }
 
+export interface LeaderboardSnapshot {
+  id: string;
+  name: string;
+  color: string;
+  unitCount: number;
+  deathCount: number;
+  isDead: boolean;
+}
+
 export interface UnitSnapshot {
   id: string;
   ownerId: string;
@@ -152,6 +162,10 @@ export interface NetClient {
   readonly playerCount: number;
   readonly unitCount: number;
   readonly asteroidCount: number;
+  /** Snapshot of the server-broadcast leaderboard (~15 entries). The server
+   *  maintains this map authoritatively from non-AOI-filtered counts so
+   *  rank/death/unit-count display works even when AOI hides distant units. */
+  getLeaderboard(): LeaderboardSnapshot[];
   send(input: PlayerInput): void;
   spawnUnit(kind?: string): void;
   buildStructure(kind: string, x: number, y: number): void;
@@ -271,6 +285,22 @@ export async function connectToArena(opts: ConnectOptions = {}): Promise<NetClie
     },
     get asteroidCount() {
       return room.state?.asteroids?.size ?? 0;
+    },
+    getLeaderboard() {
+      const out: LeaderboardSnapshot[] = [];
+      const board = room.state?.leaderboard;
+      if (!board) return out;
+      for (const [, entry] of board as unknown as Iterable<[string, LeaderboardEntry]>) {
+        out.push({
+          id: entry.id,
+          name: entry.name,
+          color: entry.color,
+          unitCount: entry.unitCount,
+          deathCount: entry.deathCount,
+          isDead: entry.isDead,
+        });
+      }
+      return out;
     },
     send(input) {
       room.send("input", input satisfies PlayerInput);
