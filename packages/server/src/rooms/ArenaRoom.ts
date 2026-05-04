@@ -333,23 +333,23 @@ export class ArenaRoom extends Room<ArenaState> {
    * just stays one short for a tick — next cull adds another respawn cue).
    */
   private spawnAsteroid() {
-    const lo = ASTEROID_SPAWN_MARGIN;
-    const hiX = WORLD_WIDTH - ASTEROID_SPAWN_MARGIN;
-    const hiY = WORLD_HEIGHT - ASTEROID_SPAWN_MARGIN;
+    const tier = pickAsteroidTier();
+    const lo = ASTEROID_SPAWN_MARGIN + tier.radius;
+    const hiX = WORLD_WIDTH - ASTEROID_SPAWN_MARGIN - tier.radius;
+    const hiY = WORLD_HEIGHT - ASTEROID_SPAWN_MARGIN - tier.radius;
     let x = 0;
     let y = 0;
     let placed = false;
     for (let attempt = 0; attempt < 20; attempt++) {
       x = lo + Math.random() * (hiX - lo);
       y = lo + Math.random() * (hiY - lo);
-      if (this.isAsteroidPlacementClear(x, y)) {
+      if (this.isAsteroidPlacementClear(x, y, tier.radius)) {
         placed = true;
         break;
       }
     }
     if (!placed) return;
 
-    const tier = pickAsteroidTier();
     const asteroid = new Asteroid();
     asteroid.id = `a${++this.asteroidCounter}`;
     asteroid.x = x;
@@ -416,12 +416,15 @@ export class ArenaRoom extends Room<ArenaState> {
     }
   }
 
-  private isAsteroidPlacementClear(x: number, y: number): boolean {
+  private isAsteroidPlacementClear(x: number, y: number, radius: number): boolean {
+    // ASTEROID_MIN_SPACING is the minimum *gap* between rock surfaces
+    // (and between any rock surface and a player). Adding the candidate's
+    // radius + the existing rock's radius keeps giants from overlapping.
     for (const a of this.state.asteroids.values()) {
-      if (Math.hypot(a.x - x, a.y - y) < ASTEROID_MIN_SPACING) return false;
+      if (Math.hypot(a.x - x, a.y - y) < radius + a.radius + ASTEROID_MIN_SPACING) return false;
     }
     for (const p of this.state.players.values()) {
-      if (Math.hypot(p.x - x, p.y - y) < ASTEROID_MIN_SPACING) return false;
+      if (Math.hypot(p.x - x, p.y - y) < radius + ASTEROID_MIN_SPACING) return false;
     }
     return true;
   }
