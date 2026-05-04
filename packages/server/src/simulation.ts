@@ -357,8 +357,36 @@ function runUnitAI(state: ArenaState, bodyRefs: Map<string, BodyRef>, ctx: SimCo
       }
     }
     const adjusted = applySeparation(unit, desired, state, meta);
-    setBodyVelocity(ref.body, adjusted.vx, adjusted.vy);
+    // Acceleration cap: clamp the per-tick velocity *change* so sharp AI
+    // intent flips (formation→chase, target switch, asteroid death) don't
+    // produce single-tick discontinuities that 20Hz snapshot interp renders
+    // as a visible kink. Standard Reynolds steering practice — limits dv/dt
+    // regardless of what the AI wants. The AI is still authoritative on
+    // intent; the body just ramps to that intent over a few ticks.
+    const cur = bodyVelocity(ref.body);
+    const limited = limitAcceleration(cur.x, cur.y, adjusted.vx, adjusted.vy);
+    setBodyVelocity(ref.body, limited.vx, limited.vy);
   }
+}
+
+/** Per-tick velocity-change cap, in world units. At 30Hz with MAX_ACCEL =
+ *  4000 u/s², that's 133 u/tick — roughly 75ms to change from 0 to ship
+ *  speed (300), 150ms from 0 to rammer attack speed (600). Snappy enough to
+ *  feel responsive, smooth enough to hide single-tick AI flips. */
+const MAX_VELOCITY_CHANGE_PER_TICK = 4000 * TICK_DT;
+
+function limitAcceleration(
+  curVx: number,
+  curVy: number,
+  wantVx: number,
+  wantVy: number,
+): { vx: number; vy: number } {
+  const dx = wantVx - curVx;
+  const dy = wantVy - curVy;
+  const mag = Math.hypot(dx, dy);
+  if (mag <= MAX_VELOCITY_CHANGE_PER_TICK) return { vx: wantVx, vy: wantVy };
+  const scale = MAX_VELOCITY_CHANGE_PER_TICK / mag;
+  return { vx: curVx + dx * scale, vy: curVy + dy * scale };
 }
 
 /**
