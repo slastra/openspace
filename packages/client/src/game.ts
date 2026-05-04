@@ -59,6 +59,16 @@ export function startGame({ renderer, input, net }: GameDeps) {
    *  to reclaim it for a partial refund. Esc / right-click cancels. */
   let recycling = false;
 
+  // Incremental kind counters for the local player. Updated only on
+  // entity add/remove (own units + structures), read each frame by the
+  // build HUD. Replaces the per-frame walk over the AOI-trimmed local
+  // state — same result, no allocation churn or filter re-traversal.
+  // Other-player counts aren't tracked here; the build HUD only ever
+  // shows local owned counts.
+  const localUnitCounts: Record<string, number> = {};
+  const localStructureCounts: Record<string, number> = {};
+  let localUnitTotal = 0;
+
   // Effects layer lives in world space (above the entities) so explosions
   // and spawn pulses pan with the camera.
   const effects = new EffectManager(renderer.world);
@@ -248,6 +258,10 @@ export function startGame({ renderer, input, net }: GameDeps) {
     onUnitAdd(snap) {
       updateOffset(snap.serverTime);
       units.set(snap.id, new Unit(snap, renderer));
+      if (snap.ownerId === net.sessionId) {
+        localUnitCounts[snap.kind] = (localUnitCounts[snap.kind] ?? 0) + 1;
+        localUnitTotal++;
+      }
     },
     onUnitUpdate(snap) {
       updateOffset(snap.serverTime);
@@ -300,6 +314,12 @@ export function startGame({ renderer, input, net }: GameDeps) {
       // see exactly how much area each death threatens.
       const radius = UNIT_KIND_META[u.kind]?.explodeRadius ?? 0;
       effects.add(createExplosion(u.view.container.x, u.view.container.y, radius, u.color));
+      if (u.ownerId === net.sessionId) {
+        const next = (localUnitCounts[u.kind] ?? 0) - 1;
+        if (next > 0) localUnitCounts[u.kind] = next;
+        else delete localUnitCounts[u.kind];
+        localUnitTotal--;
+      }
       u.destroy(renderer);
       units.delete(id);
     },
@@ -342,6 +362,9 @@ export function startGame({ renderer, input, net }: GameDeps) {
     },
     onStructureAdd(snap) {
       structures.set(snap.id, new Structure(snap, renderer));
+      if (snap.ownerId === net.sessionId) {
+        localStructureCounts[snap.kind] = (localStructureCounts[snap.kind] ?? 0) + 1;
+      }
     },
     onStructureUpdate(snap) {
       const s = structures.get(snap.id);
@@ -386,6 +409,11 @@ export function startGame({ renderer, input, net }: GameDeps) {
       if (!s) return;
       // Bigger pop than a unit — structures take a beating to fall.
       effects.add(createExplosion(s.view.container.x, s.view.container.y, 50, s.color));
+      if (s.ownerId === net.sessionId) {
+        const next = (localStructureCounts[s.kind] ?? 0) - 1;
+        if (next > 0) localStructureCounts[s.kind] = next;
+        else delete localStructureCounts[s.kind];
+      }
       s.destroy(renderer);
       structures.delete(id);
     },
@@ -527,7 +555,7 @@ export function startGame({ renderer, input, net }: GameDeps) {
     }
     hud.modeHint = recycling ? "RECYCLE — click a structure to reclaim" : "";
 
-    pushHudUpdates(units, structures, local, net.sessionId, placing);
+    pushHudUpdates(localUnitCounts, localStructureCounts, localUnitTotal, local, placing);
     pushLeaderboard(net);
     hud.isDead = local !== null && local.hp <= 0;
   });
@@ -554,30 +582,19 @@ function pushLeaderboard(net: NetClient) {
 }
 
 /**
- * Per-frame: tally the local player's owned units + structures by kind,
- * push counts/affordability/placing-state into the build HUD, and push
- * rank (= total owned units) + HP + supply into the stats panel. The
- * underlying writers cache last value internally so unchanged DOM nodes
- * skip re-paints.
+ * Per-frame: push owned counts (kept incrementally up-to-date by the
+ * onUnitAdd/Remove + onStructureAdd/Remove listeners), affordability,
+ * and stats into the HUD. No state-map walks here — the side-tables are
+ * authoritative for the local player's totals.
  */
 function pushHudUpdates(
-  units: Map<string, Unit>,
-  structures: Map<string, Structure>,
+  unitCounts: Record<string, number>,
+  structureCounts: Record<string, number>,
+  totalUnits: number,
   local: LocalPlayer | null,
-  localSessionId: string,
   placing: StructureKindName | null,
 ) {
-  const ownedByKind: Record<string, number> = {};
-  let totalUnits = 0;
-  for (const u of units.values()) {
-    if (u.ownerId !== localSessionId) continue;
-    ownedByKind[u.kind] = (ownedByKind[u.kind] ?? 0) + 1;
-    totalUnits++;
-  }
-  for (const s of structures.values()) {
-    if (s.ownerId !== localSessionId) continue;
-    ownedByKind[s.kind] = (ownedByKind[s.kind] ?? 0) + 1;
-  }
+  const ownedByKind: Record<string, number> = { ...unitCounts, ...structureCounts };
 
   const credits = local?.credits ?? 0;
   const supplyUsed = local?.supplyUsed ?? 0;

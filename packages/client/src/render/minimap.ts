@@ -1,5 +1,5 @@
 import { Application, Container, Graphics } from "pixi.js";
-import { VISION_RADIUS, WORLD_HEIGHT, WORLD_WIDTH } from "@openspace/shared";
+import { WORLD_HEIGHT, WORLD_WIDTH } from "@openspace/shared";
 import type { Asteroid } from "../entities/asteroids.js";
 import type { LocalPlayer, RemotePlayer } from "../entities/players.js";
 import type { Structure } from "../entities/structures.js";
@@ -14,6 +14,10 @@ const BG_COLOR = 0x0a0e1a;
 const BG_ALPHA = 0.65;
 const FRAME_COLOR = 0x2a3346;
 const ASTEROID_COLOR = 0x8a7656;
+/** Minimum interval (ms) between minimap redraws. Player gestures are
+ *  coarse-grained; 10 Hz looks identical to per-frame and saves the
+ *  Graphics rebuild every other frame. */
+const MIN_RENDER_INTERVAL_MS = 100;
 
 /**
  * Bottom-right corner minimap. Pinned to screen space (added to app.stage,
@@ -29,6 +33,7 @@ export class Minimap {
   private readonly bg: Graphics;
   private readonly dots: Graphics;
   private readonly app: Application;
+  private lastRenderAt = 0;
 
   constructor(app: Application) {
     this.app = app;
@@ -48,52 +53,36 @@ export class Minimap {
   render(
     asteroids: Iterable<Asteroid>,
     structures: Iterable<Structure>,
-    units: Iterable<Unit>,
+    _units: Iterable<Unit>,
     local: LocalPlayer | null,
-    localSessionId: string,
+    _localSessionId: string,
     remotes: Iterable<RemotePlayer>,
   ) {
+    // Pin to bottom-right every frame (cheap; layout stays correct on resize)
+    // but rate-limit the actual Graphics rebuild to MIN_RENDER_INTERVAL_MS.
     this.container.x = this.app.screen.width - MAP_SIZE - EDGE_OFFSET_X;
     this.container.y = this.app.screen.height - MAP_SIZE - EDGE_OFFSET_Y;
+    const now = performance.now();
+    if (now - this.lastRenderAt < MIN_RENDER_INTERVAL_MS) return;
+    this.lastRenderAt = now;
 
     this.dots.clear();
     const sx = MAP_SIZE / WORLD_WIDTH;
     const sy = MAP_SIZE / WORLD_HEIGHT;
 
-    // Collect every friendly position to use as vision sources for the
-    // enemy-structure fog. Local ship + units owned by us count.
-    const friendlies: { x: number; y: number }[] = [];
-    if (local) friendlies.push(local.prediction.position);
-    for (const u of units) {
-      if (u.ownerId === localSessionId) {
-        friendlies.push({ x: u.view.container.x, y: u.view.container.y });
-      }
-    }
-    const visionSq = VISION_RADIUS * VISION_RADIUS;
-    const visibleToFriendly = (x: number, y: number) => {
-      for (const f of friendlies) {
-        const dx = f.x - x;
-        const dy = f.y - y;
-        if (dx * dx + dy * dy <= visionSq) return true;
-      }
-      return false;
-    };
+    // No fog-of-war check: server-side AOI already filters the local state
+    // to roughly-vision-range entities. If a structure is in `structures`,
+    // it's near enough to display. Far-away enemy structures simply aren't
+    // in the client's state at all.
 
     for (const a of asteroids) {
-      // Dot size proportional to actual radius so big rocks stand out as juicy targets.
       const dot = Math.max(0.9, a.radius * sx * 1.2);
       this.dots
         .circle(a.view.container.x * sx, a.view.container.y * sy, dot)
         .fill({ color: ASTEROID_COLOR, alpha: 0.85 });
     }
 
-    // Structures: own ones always visible; enemy ones only revealed when a
-    // friendly entity is within VISION_RADIUS of them (fog of war).
     for (const s of structures) {
-      const isMine = s.ownerId === localSessionId;
-      if (!isMine && !visibleToFriendly(s.view.container.x, s.view.container.y)) {
-        continue;
-      }
       const px = s.view.container.x * sx;
       const py = s.view.container.y * sy;
       this.dots
