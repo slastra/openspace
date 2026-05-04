@@ -1,5 +1,5 @@
-export const WORLD_WIDTH = 4000;
-export const WORLD_HEIGHT = 4000;
+export const WORLD_WIDTH = 12000;
+export const WORLD_HEIGHT = 12000;
 
 export const TICK_RATE_HZ = 30;
 export const SNAPSHOT_RATE_HZ = 20;
