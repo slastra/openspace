@@ -163,7 +163,10 @@ export function startGame({ renderer, input, net }: GameDeps) {
     const world = renderer.camera.screenToWorld(sx, sy);
     if (recycling) {
       const target = pickOwnedStructure(world.x, world.y, structures, net.sessionId);
-      if (target) net.recycleStructure(target.id);
+      if (target) {
+        net.recycleStructure(target.id);
+        cancelModes();
+      }
       return;
     }
     if (!placing) return;
