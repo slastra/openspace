@@ -130,6 +130,12 @@ export interface SimContext {
    *  passes (e.g. target re-acquisition) across ticks so we don't pay the
    *  full cost every frame. */
   tickIndex: number;
+  /** Per-unit fire-cooldown clock (seconds). Lives off-schema so the
+   *  every-tick decrement doesn't dirty the network state — only
+   *  `Unit.fireCount` goes on the wire, and only when it actually fires. */
+  unitCooldownById: Map<string, number>;
+  /** Per-structure fire-cooldown clock (seconds). Same role as above. */
+  structureCooldownById: Map<string, number>;
 }
 
 export function simulateTick(
@@ -525,8 +531,10 @@ function sampleVelocity(
 ) {
   const last = ctx.lastEntityPos.get(id);
   if (last) {
-    entity.vx = (newX - last.x) / TICK_DT;
-    entity.vy = (newY - last.y) / TICK_DT;
+    // Round to int — vx/vy are int16 on the wire; pre-rounding here means
+    // float jitter under ±0.5 u/s never dirties the schema field.
+    entity.vx = Math.round((newX - last.x) / TICK_DT);
+    entity.vy = Math.round((newY - last.y) / TICK_DT);
   } else {
     entity.vx = 0;
     entity.vy = 0;
@@ -551,8 +559,10 @@ function readBackPlayers(
     const newX = clamp(pos.x, 0, WORLD_WIDTH);
     const newY = clamp(pos.y, 0, WORLD_HEIGHT);
     sampleVelocity(ctx, sessionId, player.x, player.y, newX, newY, player);
-    player.x = newX;
-    player.y = newY;
+    // Round to int — x/y are int16 on the wire; rounding here keeps idle
+    // ships from dirtying every tick on Rapier's sub-unit float jitter.
+    player.x = Math.round(newX);
+    player.y = Math.round(newY);
     // Rotation is set in applyPlayerInputs from the desired (cursor) direction
     // — see the comment there for why we don't use actual velocity here.
   }
@@ -570,8 +580,8 @@ function readBackUnits(
     const newX = clamp(pos.x, 0, WORLD_WIDTH);
     const newY = clamp(pos.y, 0, WORLD_HEIGHT);
     sampleVelocity(ctx, unitId, unit.x, unit.y, newX, newY, unit);
-    unit.x = newX;
-    unit.y = newY;
+    unit.x = Math.round(newX);
+    unit.y = Math.round(newY);
 
     // Facing: aim at target if we have one (resolved across players, units,
     // and asteroids — miners face their rock). Else fall back to velocity
@@ -750,8 +760,10 @@ function impactDamage(speed: number): number {
  */
 function runUnitAbilities(state: ArenaState, ctx: SimContext) {
   for (const unit of state.units.values()) {
-    if (unit.cooldown > 0) {
-      unit.cooldown = Math.max(0, unit.cooldown - TICK_DT);
+    let cooldown = ctx.unitCooldownById.get(unit.id) ?? 0;
+    if (cooldown > 0) {
+      cooldown = Math.max(0, cooldown - TICK_DT);
+      ctx.unitCooldownById.set(unit.id, cooldown);
     }
     if (unit.hp <= 0) continue;
     if (unit.wreckageId || unit.deactivated) continue; // orphans + sleeping units don't fire
@@ -761,7 +773,7 @@ function runUnitAbilities(state: ArenaState, ctx: SimContext) {
     const range = meta.abilityRange ?? 0;
     const cd = meta.abilityCooldownSeconds ?? 0;
     if (dmg <= 0 || range <= 0 || cd <= 0) continue;
-    if (unit.cooldown > 0) continue;
+    if (cooldown > 0) continue;
     if (!unit.targetId) continue;
     const target = lookupCombatant(state, unit.targetId);
     if (!target || target.hp <= 0) continue;
@@ -770,7 +782,17 @@ function runUnitAbilities(state: ArenaState, ctx: SimContext) {
     if (dx * dx + dy * dy > range * range) continue;
 
     if (meta.projectileSpeed && meta.projectileSpeed > 0) {
-      spawnProjectile(state, ctx, unit, target.x, target.y, meta.projectileSpeed, dmg, range);
+      const ownerColor = state.players.get(unit.ownerId)?.color ?? "#ffffff";
+      spawnProjectile(
+        state,
+        ctx,
+        { x: unit.x, y: unit.y, ownerId: unit.ownerId, color: ownerColor },
+        target.x,
+        target.y,
+        meta.projectileSpeed,
+        dmg,
+        range,
+      );
     } else {
       // Hitscan kinds with a turret-style aim delay can only fire when their
       // current rotation lines up with the target — otherwise the visual beam
@@ -784,7 +806,10 @@ function runUnitAbilities(state: ArenaState, ctx: SimContext) {
       }
       damage(target, dmg, unit.ownerId, ctx);
     }
-    unit.cooldown = cd;
+    ctx.unitCooldownById.set(unit.id, cd);
+    // Wrap to keep uint16 range; client only watches for "value increased"
+    // so the rollover boundary doesn't matter.
+    unit.fireCount = (unit.fireCount + 1) & 0xffff;
   }
 }
 
@@ -802,8 +827,10 @@ const FIRE_ALIGNMENT_TOLERANCE = 0.15;
  */
 function runStructureAbilities(state: ArenaState, ctx: SimContext) {
   for (const s of state.structures.values()) {
-    if (s.cooldown > 0) {
-      s.cooldown = Math.max(0, s.cooldown - TICK_DT);
+    let cooldown = ctx.structureCooldownById.get(s.id) ?? 0;
+    if (cooldown > 0) {
+      cooldown = Math.max(0, cooldown - TICK_DT);
+      ctx.structureCooldownById.set(s.id, cooldown);
     }
     if (s.hp <= 0) continue;
     const meta = STRUCTURE_KIND_META[s.kind];
@@ -834,13 +861,14 @@ function runStructureAbilities(state: ArenaState, ctx: SimContext) {
       s.rotation = Math.atan2(target.y - s.y, target.x - s.x);
     }
 
-    if (s.cooldown > 0) continue;
+    if (cooldown > 0) continue;
     if (!target) continue;
     const dx = target.x - s.x;
     const dy = target.y - s.y;
     if (dx * dx + dy * dy > range * range) continue;
     damage(target, dmg, s.ownerId, ctx);
-    s.cooldown = cd;
+    ctx.structureCooldownById.set(s.id, cd);
+    s.fireCount = (s.fireCount + 1) & 0xffff;
   }
 }
 
@@ -869,10 +897,10 @@ function spawnProjectile(
   p.ownerId = unit.ownerId;
   p.team = unit.ownerId;
   p.color = unit.color;
-  p.x = unit.x;
-  p.y = unit.y;
-  p.vx = dx * inv * speed;
-  p.vy = dy * inv * speed;
+  p.x = Math.round(unit.x);
+  p.y = Math.round(unit.y);
+  p.vx = Math.round(dx * inv * speed);
+  p.vy = Math.round(dy * inv * speed);
   p.damage = damage;
   // Lifetime = travel time at max range, plus a small grace so a shot fired
   // exactly at max range still has time to land before expiring mid-flight.
@@ -962,8 +990,11 @@ function stepProjectiles(state: ArenaState, ctx: SimContext) {
       removed.push(id);
       continue;
     }
-    p.x += p.vx * TICK_DT;
-    p.y += p.vy * TICK_DT;
+    // Schema-bound x,y are int16 — round on update so projectiles only
+    // dirty the schema field when their position visibly moves (every tick
+    // for fast bullets, but no spurious sub-unit oscillation).
+    p.x = Math.round(p.x + p.vx * TICK_DT);
+    p.y = Math.round(p.y + p.vy * TICK_DT);
     if (p.x < 0 || p.x > WORLD_WIDTH || p.y < 0 || p.y > WORLD_HEIGHT) {
       removed.push(id);
       continue;
@@ -1154,7 +1185,6 @@ function claimWreckages(
     for (const u of state.units.values()) {
       if (u.wreckageId !== wid) continue;
       u.ownerId = claimerId;
-      u.color = claimer.color;
       u.wreckageId = "";
       const meta = UNIT_KIND_META[u.kind];
       if (meta) claimer.supplyUsed += meta.supplyCost;
@@ -1187,6 +1217,7 @@ function cullAndRespawn(
     if (ref) removeCombatantBody(phys, ref.body, ref.colliderHandle);
     bodyRefs.delete(id);
     state.units.delete(id);
+    ctx.unitCooldownById.delete(id);
   }
 
   // Destroyed structures → remove body + state, drop owner's supply cap by
@@ -1210,6 +1241,7 @@ function cullAndRespawn(
     if (ref) removeCombatantBody(phys, ref.body, ref.colliderHandle);
     bodyRefs.delete(id);
     state.structures.delete(id);
+    ctx.structureCooldownById.delete(id);
   }
 
   // Mined-out asteroids → removed. Credit reward already streamed during

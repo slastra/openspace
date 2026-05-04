@@ -253,13 +253,13 @@ export function startGame({ renderer, input, net }: GameDeps) {
       updateOffset(snap.serverTime);
       const u = units.get(snap.id);
       if (!u) return;
-      // Cooldown rising edge = the server just fired this unit's ability.
+      // fireCount increase = the server just fired this unit's ability.
       // For hitscan kinds (laser) we render a beam; projectile kinds (gunner)
       // already get their visual via the projectile snapshot stream, so we
       // skip the beam to avoid drawing both.
       const meta = UNIT_KIND_META[u.kind];
       const isHitscan = !!meta && meta.abilityRange !== undefined && !meta.projectileSpeed;
-      if (isHitscan && snap.cooldown > u.lastCooldown + 0.05 && snap.targetId) {
+      if (isHitscan && snap.fireCount !== u.lastFireCount && snap.targetId) {
         const tgt = resolveRenderedPosition(
           snap.targetId,
           local,
@@ -291,7 +291,7 @@ export function startGame({ renderer, input, net }: GameDeps) {
         }
       }
       u.applyServerUpdate(snap);
-      u.lastCooldown = snap.cooldown;
+      u.lastFireCount = snap.fireCount;
     },
     onUnitRemove(id) {
       const u = units.get(id);
@@ -346,10 +346,10 @@ export function startGame({ renderer, input, net }: GameDeps) {
     onStructureUpdate(snap) {
       const s = structures.get(snap.id);
       if (!s) return;
-      // Cooldown rising edge = the server just fired this turret. Same
-      // mechanic as the laser unit (see onUnitUpdate); spawn the beam at
-      // the structure's current position to the target's rendered spot.
-      if (snap.cooldown > s.lastCooldown + 0.05 && snap.targetId) {
+      // fireCount increase = the server just fired this turret. Same mechanic
+      // as the laser unit (see onUnitUpdate); spawn the beam at the
+      // structure's current position to the target's rendered spot.
+      if (snap.fireCount !== s.lastFireCount && snap.targetId) {
         const tgt = resolveRenderedPosition(
           snap.targetId,
           local,
@@ -379,7 +379,7 @@ export function startGame({ renderer, input, net }: GameDeps) {
         }
       }
       s.applyServerUpdate(snap);
-      s.lastCooldown = snap.cooldown;
+      s.lastFireCount = snap.fireCount;
     },
     onStructureRemove(id) {
       const s = structures.get(id);

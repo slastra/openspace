@@ -80,6 +80,8 @@ export class ArenaRoom extends Room<ArenaState> {
     lastEntityPos: new Map(),
     grids: createTickGrids(),
     tickIndex: 0,
+    unitCooldownById: new Map(),
+    structureCooldownById: new Map(),
   };
 
   override async onCreate() {
@@ -124,7 +126,7 @@ export class ArenaRoom extends Room<ArenaState> {
       this.lastUnitSpawnAt.set(client.sessionId, now);
       player.credits -= meta.cost;
       player.supplyUsed += meta.supplyCost;
-      this.spawnUnit(client.sessionId, kind, player.x, player.y, player.color);
+      this.spawnUnit(client.sessionId, kind, player.x, player.y);
     });
 
     this.onMessage<BuildStructureMessage>("build-structure", (client, payload) => {
@@ -179,6 +181,7 @@ export class ArenaRoom extends Room<ArenaState> {
       if (ref) removeCombatantBody(this.physics, ref.body, ref.colliderHandle);
       this.bodyRefs.delete(payload.id);
       this.state.structures.delete(payload.id);
+      this.simCtx.structureCooldownById.delete(payload.id);
     });
 
     this.onMessage("respawn", (client) => {
@@ -212,20 +215,13 @@ export class ArenaRoom extends Room<ArenaState> {
     console.log(`[ArenaRoom ${this.roomId}] created`);
   }
 
-  private spawnUnit(
-    ownerId: string,
-    kind: string,
-    x: number,
-    y: number,
-    color: string,
-  ) {
+  private spawnUnit(ownerId: string, kind: string, x: number, y: number) {
     const meta = UNIT_KIND_META[kind];
     if (!meta) return;
 
     const unit = new Unit();
     unit.id = `u${++this.unitCounter}`;
     unit.ownerId = ownerId;
-    unit.color = color;
     unit.kind = kind;
     unit.x = x;
     unit.y = y;
@@ -233,7 +229,6 @@ export class ArenaRoom extends Room<ArenaState> {
     unit.maxHp = meta.maxHp;
     unit.shield = meta.maxShield;
     unit.maxShield = meta.maxShield;
-    unit.cooldown = 0;
     unit.targetId = "";
     unit.slotIndex = this.allocSlot(ownerId);
     this.state.units.set(unit.id, unit);
@@ -309,6 +304,7 @@ export class ArenaRoom extends Room<ArenaState> {
       if (ref) removeCombatantBody(this.physics, ref.body, ref.colliderHandle);
       this.bodyRefs.delete(id);
       this.state.units.delete(id);
+      this.simCtx.unitCooldownById.delete(id);
     }
 
     // Tear down any structures the leaver placed.
@@ -321,6 +317,7 @@ export class ArenaRoom extends Room<ArenaState> {
       if (ref) removeCombatantBody(this.physics, ref.body, ref.colliderHandle);
       this.bodyRefs.delete(id);
       this.state.structures.delete(id);
+      this.simCtx.structureCooldownById.delete(id);
     }
 
     console.log(`[ArenaRoom] leave ${client.sessionId}`);
@@ -395,8 +392,8 @@ export class ArenaRoom extends Room<ArenaState> {
 
     const asteroid = new Asteroid();
     asteroid.id = `a${++this.asteroidCounter}`;
-    asteroid.x = x;
-    asteroid.y = y;
+    asteroid.x = Math.round(x);
+    asteroid.y = Math.round(y);
     asteroid.radius = tier.radius;
     asteroid.hp = tier.hp;
     asteroid.maxHp = tier.hp;

@@ -66,7 +66,10 @@ export interface StructureSnapshot {
   shield: number;
   maxShield: number;
   rotation: number;
-  cooldown: number;
+  /** Monotonically increasing fire counter (uint16 with wrap). Client renders
+   *  a beam visual on every increase. Replaces the old `cooldown` jump-edge
+   *  detection so the schema no longer carries per-tick cooldown traffic. */
+  fireCount: number;
   targetId: string;
 }
 
@@ -99,6 +102,7 @@ export interface ProjectileSnapshot {
 export interface UnitSnapshot {
   id: string;
   ownerId: string;
+  /** Resolved client-side from `players.get(ownerId).color`, not on the wire. */
   color: string;
   kind: string;
   x: number;
@@ -110,7 +114,8 @@ export interface UnitSnapshot {
   maxHp: number;
   shield: number;
   maxShield: number;
-  cooldown: number;
+  /** Per-fire counter — see StructureSnapshot.fireCount. */
+  fireCount: number;
   targetId: string;
   deactivated: boolean;
   serverTime: number;
@@ -201,9 +206,11 @@ export async function connectToArena(opts: ConnectOptions = {}): Promise<NetClie
   });
 
   $(room.state).units.onAdd((unit: Unit, id: string) => {
-    handlers.onUnitAdd?.(toUnitSnapshot(unit, id, room.state.serverTime));
+    handlers.onUnitAdd?.(toUnitSnapshot(unit, id, room.state, room.state.serverTime));
     $(unit).onChange(() =>
-      handlers.onUnitUpdate?.(toUnitSnapshot(unit, id, room.state.serverTime)),
+      handlers.onUnitUpdate?.(
+        toUnitSnapshot(unit, id, room.state, room.state.serverTime),
+      ),
     );
   });
   $(room.state).units.onRemove((_unit: Unit, id: string) => {
@@ -351,7 +358,7 @@ function toStructureSnapshot(s: Structure, id: string): StructureSnapshot {
     shield: s.shield,
     maxShield: s.maxShield,
     rotation: s.rotation,
-    cooldown: s.cooldown,
+    fireCount: s.fireCount,
     targetId: s.targetId,
   };
 }
@@ -394,11 +401,21 @@ function toProjectileSnapshot(
   };
 }
 
-function toUnitSnapshot(u: Unit, id: string, serverTime: number): UnitSnapshot {
+function toUnitSnapshot(
+  u: Unit,
+  id: string,
+  state: ArenaState,
+  serverTime: number,
+): UnitSnapshot {
+  // Resolve color from the owner Player rather than carrying it on every
+  // unit snapshot (~7B/unit/snapshot saved). Falls back to white for the
+  // brief window before a join's player record arrives, or for orphan units
+  // whose owner has left the room.
+  const owner = state.players.get(u.ownerId);
   return {
     id: id || u.id,
     ownerId: u.ownerId,
-    color: u.color,
+    color: owner?.color ?? "#ffffff",
     kind: u.kind,
     x: u.x,
     y: u.y,
@@ -409,7 +426,7 @@ function toUnitSnapshot(u: Unit, id: string, serverTime: number): UnitSnapshot {
     maxHp: u.maxHp,
     shield: u.shield,
     maxShield: u.maxShield,
-    cooldown: u.cooldown,
+    fireCount: u.fireCount,
     targetId: u.targetId,
     deactivated: u.deactivated,
     serverTime,

@@ -16,8 +16,8 @@ export class Structure {
   hp: number;
   maxHp: number;
   targetId: string;
-  /** Last cooldown value seen from server. A jump upward is a fire event. */
-  lastCooldown: number;
+  /** Last fireCount seen from server. An increase is a fire event. */
+  lastFireCount: number;
 
   constructor(snap: StructureSnapshot, renderer: Renderer) {
     this.id = snap.id;
@@ -27,7 +27,7 @@ export class Structure {
     this.hp = snap.hp;
     this.maxHp = snap.maxHp;
     this.targetId = snap.targetId;
-    this.lastCooldown = snap.cooldown;
+    this.lastFireCount = snap.fireCount;
     this.view = createStructureView(snap.kind, snap.color);
     this.view.container.x = snap.x;
     this.view.container.y = snap.y;

@@ -59,20 +59,23 @@ export class Player extends Schema {
   }
 }
 
+// Position/velocity quantized to int16 — world is 12000² so values fit
+// comfortably in -32k..32k. Sub-unit precision is invisible visually and
+// cuts the per-snapshot wire bytes for moving entities by ~75% (8B → 2B).
 defineTypes(Player, {
   id: "string",
   name: "string",
   kind: "string",
-  x: "number",
-  y: "number",
-  vx: "number",
-  vy: "number",
+  x: "int16",
+  y: "int16",
+  vx: "int16",
+  vy: "int16",
   rotation: "number",
   color: "string",
-  hp: "number",
-  maxHp: "number",
-  shield: "number",
-  maxShield: "number",
+  hp: "uint16",
+  maxHp: "uint16",
+  shield: "uint16",
+  maxShield: "uint16",
   deathCount: "uint32",
   lastProcessedInputSeq: "uint32",
   credits: "uint32",
@@ -91,7 +94,6 @@ defineTypes(Player, {
 export class Unit extends Schema {
   declare id: string;
   declare ownerId: string;
-  declare color: string;
   /** Discriminator — see UNIT_KIND_META in shared/kinds.ts. */
   declare kind: string;
   declare x: number;
@@ -105,7 +107,10 @@ export class Unit extends Schema {
   declare maxHp: number;
   declare shield: number;
   declare maxShield: number;
-  declare cooldown: number;
+  /** Per-tick float cooldown lives in SimContext (not on the wire) to keep
+   *  the schema clean of every-tick decrement traffic. Server fires increment
+   *  `fireCount` (rolling uint16) so clients detect a fire as "value went up". */
+  declare fireCount: number;
   /** Empty when in formation; entity id (unit or player) when chasing/targeting. */
   declare targetId: string;
   /** Stable per-owner slot index assigned on spawn. Drives formation position
@@ -124,7 +129,6 @@ export class Unit extends Schema {
     super();
     this.id = "";
     this.ownerId = "";
-    this.color = "#ffffff";
     this.kind = "";
     this.x = 0;
     this.y = 0;
@@ -135,7 +139,7 @@ export class Unit extends Schema {
     this.maxHp = 0;
     this.shield = 0;
     this.maxShield = 0;
-    this.cooldown = 0;
+    this.fireCount = 0;
     this.targetId = "";
     this.slotIndex = 0;
     this.wreckageId = "";
@@ -143,21 +147,24 @@ export class Unit extends Schema {
   }
 }
 
+// Color is dropped from the wire — clients derive unit color from
+// players.get(ownerId).color, saving ~7B per unit per snapshot. Cooldown
+// is also dropped: replaced by fireCount which only patches on fire,
+// not every tick decrement.
 defineTypes(Unit, {
   id: "string",
   ownerId: "string",
-  color: "string",
   kind: "string",
-  x: "number",
-  y: "number",
-  vx: "number",
-  vy: "number",
+  x: "int16",
+  y: "int16",
+  vx: "int16",
+  vy: "int16",
   rotation: "number",
-  hp: "number",
-  maxHp: "number",
-  shield: "number",
-  maxShield: "number",
-  cooldown: "number",
+  hp: "uint16",
+  maxHp: "uint16",
+  shield: "uint16",
+  maxShield: "uint16",
+  fireCount: "uint16",
   targetId: "string",
   slotIndex: "uint8",
   wreckageId: "string",
@@ -195,11 +202,11 @@ export class Asteroid extends Schema {
 
 defineTypes(Asteroid, {
   id: "string",
-  x: "number",
-  y: "number",
-  radius: "number",
-  hp: "number",
-  maxHp: "number",
+  x: "int16",
+  y: "int16",
+  radius: "uint16",
+  hp: "uint16",
+  maxHp: "uint16",
   resourceValue: "uint32",
   lastHitBy: "string",
 });
@@ -242,11 +249,11 @@ defineTypes(Projectile, {
   ownerId: "string",
   team: "string",
   color: "string",
-  x: "number",
-  y: "number",
-  vx: "number",
-  vy: "number",
-  damage: "number",
+  x: "int16",
+  y: "int16",
+  vx: "int16",
+  vy: "int16",
+  damage: "uint16",
   expiresAt: "number",
 });
 
@@ -273,8 +280,9 @@ export class Structure extends Schema {
   declare contactRadius: number;
   /** Combat structures only: barrel facing in radians, derived from current target. */
   declare rotation: number;
-  /** Combat structures only: countdown to next shot. */
-  declare cooldown: number;
+  /** Per-fire signal — see Unit.fireCount. Internal cooldown lives in
+   *  SimContext side maps; only this counter goes on the wire. */
+  declare fireCount: number;
   /** Combat structures only: id of currently-acquired target (empty if none). */
   declare targetId: string;
 
@@ -292,7 +300,7 @@ export class Structure extends Schema {
     this.maxShield = 0;
     this.contactRadius = 0;
     this.rotation = 0;
-    this.cooldown = 0;
+    this.fireCount = 0;
     this.targetId = "";
   }
 }
@@ -302,15 +310,15 @@ defineTypes(Structure, {
   ownerId: "string",
   kind: "string",
   color: "string",
-  x: "number",
-  y: "number",
-  hp: "number",
-  maxHp: "number",
-  shield: "number",
-  maxShield: "number",
-  contactRadius: "number",
+  x: "int16",
+  y: "int16",
+  hp: "uint16",
+  maxHp: "uint16",
+  shield: "uint16",
+  maxShield: "uint16",
+  contactRadius: "uint8",
   rotation: "number",
-  cooldown: "number",
+  fireCount: "uint16",
   targetId: "string",
 });
 
@@ -348,12 +356,12 @@ export class Wreckage extends Schema {
 
 defineTypes(Wreckage, {
   id: "string",
-  x: "number",
-  y: "number",
+  x: "int16",
+  y: "int16",
   color: "string",
   ownerName: "string",
   credits: "uint32",
-  halfSize: "number",
+  halfSize: "uint8",
   expiresAt: "number",
 });
 

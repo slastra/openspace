@@ -23,8 +23,8 @@ export class Unit {
   maxShield: number;
   targetId: string;
   deactivated: boolean;
-  /** Last cooldown value seen from server. A jump upward is a fire event. */
-  lastCooldown: number;
+  /** Last fireCount seen from server. An increase is a fire event. */
+  lastFireCount: number;
 
   constructor(snap: UnitSnapshot, renderer: Renderer) {
     this.id = snap.id;
@@ -55,7 +55,7 @@ export class Unit {
     this.maxShield = snap.maxShield;
     this.targetId = snap.targetId;
     this.deactivated = snap.deactivated;
-    this.lastCooldown = snap.cooldown;
+    this.lastFireCount = snap.fireCount;
     this.view.container.alpha = snap.deactivated ? 0.45 : 1;
   }
 
