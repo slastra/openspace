@@ -26,7 +26,6 @@ import {
   allCombatants,
   applyDamage,
   clamp,
-  lerp,
   contactRadiusOf,
   isNeutral,
   isPlayer,
@@ -343,60 +342,24 @@ function runUnitAI(state: ArenaState, bodyRefs: Map<string, BodyRef>, ctx: SimCo
       slot,
       phaseFor(owner?.id ?? null),
     );
-    // Flock-with-leader: when the owner is moving and the unit isn't
-    // committed to a target, blend the behavior's station-based velocity
-    // with a flock velocity (alignment to ship + cohesion when far). At
-    // rest the orbital formation we love is preserved unchanged; at
-    // cruising speed units cruise alongside in a loose cluster instead of
-    // chasing a slot that's both translating with the ship and spinning.
-    let blended = desired;
+    // Leader drift: when the unit isn't pursuing an enemy, add the owner's
+    // velocity as a baseline so the unit cruises with the ship by default.
+    // The behavior's velocity stays as the *relative* correction toward its
+    // slot (zero when on station, signed when ahead/behind). Replaces the
+    // earlier flock blend, which scaled both station and ownerVel together
+    // and produced a chronic speed mismatch — units would always run a bit
+    // slower than the ship and oscillate via cohesion overshoot.
     if (!target && owner) {
       const m = ownerMotion.get(owner.id);
-      if (m && m.orbitScale < 1) {
-        const flockScale = 1 - m.orbitScale;
-        const flock = flockDesired(unit, owner.x, owner.y, m.vx, m.vy, meta);
-        blended = {
-          vx: lerp(desired.vx, flock.vx, flockScale),
-          vy: lerp(desired.vy, flock.vy, flockScale),
-        };
+      if (m) {
+        desired.vx += m.vx;
+        desired.vy += m.vy;
       }
     }
-    const adjusted = applySeparation(unit, blended, state, meta);
+    const adjusted = applySeparation(unit, desired, state, meta);
     setBodyVelocity(ref.body, adjusted.vx, adjusted.vy);
   }
 }
-
-/** Boid-flock desired velocity: alignment with the leader's velocity + a
- *  gentle cohesion pull only when the unit drifts beyond
- *  FLOCK_COHESION_RADIUS. Separation is applied separately by the caller
- *  (existing applySeparation pass), completing the boid trio. */
-function flockDesired(
-  unit: Unit,
-  ownerX: number,
-  ownerY: number,
-  ownerVx: number,
-  ownerVy: number,
-  meta: UnitKindMeta,
-): { vx: number; vy: number } {
-  let vx = ownerVx;
-  let vy = ownerVy;
-  const dx = ownerX - unit.x;
-  const dy = ownerY - unit.y;
-  const dist = Math.hypot(dx, dy);
-  if (dist > FLOCK_COHESION_RADIUS && dist > 1) {
-    const pull =
-      clamp((dist - FLOCK_COHESION_RADIUS) / FLOCK_COHESION_RAMP, 0, 1) *
-      meta.formationSpeed;
-    vx += (dx / dist) * pull;
-    vy += (dy / dist) * pull;
-  }
-  return { vx, vy };
-}
-
-/** Beyond this distance from the leader, a flocking unit gets pulled back. */
-const FLOCK_COHESION_RADIUS = 180;
-/** The cohesion pull ramps from 0 to formationSpeed across this distance. */
-const FLOCK_COHESION_RAMP = 100;
 
 /**
  * Boid-style separation: nudge a unit's desired velocity away from any
