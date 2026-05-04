@@ -68,6 +68,30 @@ export const LINEAR_DAMPING = 2.0;
 export const ROOM_NAME = "arena";
 export const SERVER_PORT = 2567;
 
+/** Per-player live unit cap. Worst-case room load is MAX_PLAYERS_PER_ROOM ×
+ *  MAX_UNITS_PER_PLAYER + asteroids + projectiles + structures. The schema
+ *  encodes Unit slot indexes in a uint8, which also caps this at 255. */
+export const MAX_UNITS_PER_PLAYER = 255;
+/** Hard cap on concurrent players per ArenaRoom. Wired into Room.maxClients
+ *  so Colyseus matchmaker rejects extra joins. */
+export const MAX_PLAYERS_PER_ROOM = 15;
+/** Total live projectiles allowed per room. Prevents gunner-spam DoS where
+ *  an alt swarm flooding the snapshot stream starves everyone else. */
+export const MAX_PROJECTILES_PER_ROOM = 600;
+/** Per-player structure cap. The supply economy already bounds this loosely;
+ *  the explicit cap is a guardrail against placement-spam griefing. */
+export const MAX_STRUCTURES_PER_PLAYER = 64;
+
+/** Area-of-interest radius (world units) for per-client snapshot filtering.
+ *  An entity within this distance of the player ship is included in that
+ *  client's view. Roughly 1.5 viewports so units pop in well before they
+ *  enter visible range. */
+export const AOI_RADIUS_U = 1500;
+/** Hysteresis band added to AOI_RADIUS_U on the way out — once visible,
+ *  an entity stays visible until it passes RADIUS + this distance. Kills
+ *  in/out flicker for entities skating along the boundary. */
+export const AOI_HYSTERESIS_U = 300;
+
 export const PLAYER_COLORS = [
   "#4ade80",
   "#60a5fa",

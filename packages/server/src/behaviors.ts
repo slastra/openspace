@@ -6,12 +6,15 @@ import {
   UNIT_KIND_META,
   Unit,
   UnitKindMeta,
-  nearestAsteroid,
-  nearestEnemy,
-  nearestFriendlyDamaged,
   stationTarget,
   teamOf,
 } from "@openspace/shared";
+import {
+  TickGrids,
+  gridNearestAsteroid,
+  gridNearestEnemy,
+  gridNearestFriendlyDamaged,
+} from "./spatial.js";
 
 export type { SlotInfo };
 
@@ -24,7 +27,12 @@ export type { SlotInfo };
  * around the owner, so units aren't all chasing the same point.
  */
 export interface KindBehavior {
-  acquireTarget(unit: Unit, state: ArenaState, meta: UnitKindMeta): Combatant | null;
+  acquireTarget(
+    unit: Unit,
+    state: ArenaState,
+    meta: UnitKindMeta,
+    grids: TickGrids,
+  ): Combatant | null;
   desiredVelocity(
     unit: Unit,
     target: Combatant | null,
@@ -40,6 +48,7 @@ export function defaultAcquireTarget(
   unit: Unit,
   state: ArenaState,
   meta: UnitKindMeta,
+  grids: TickGrids,
 ): Combatant | null {
   if (unit.targetId) {
     const t = state.players.get(unit.targetId) ?? state.units.get(unit.targetId);
@@ -47,7 +56,7 @@ export function defaultAcquireTarget(
       return t;
     }
   }
-  return nearestEnemy(state, teamOf(unit), unit.x, unit.y, meta.aggroRadius);
+  return gridNearestEnemy(grids.combatants, teamOf(unit), unit.x, unit.y, meta.aggroRadius);
 }
 
 /**
@@ -191,7 +200,7 @@ const KITE_RANGED: KindBehavior = {
  * this behavior just handles target selection and positioning.
  */
 const REPAIR_BEHAVIOR: KindBehavior = {
-  acquireTarget(unit, state, meta) {
+  acquireTarget(unit, state, meta, grids) {
     const range = meta.repairRange ?? 200;
     if (unit.targetId) {
       const held =
@@ -206,7 +215,14 @@ const REPAIR_BEHAVIOR: KindBehavior = {
         return held;
       }
     }
-    return nearestFriendlyDamaged(state, teamOf(unit), unit.id, unit.x, unit.y, range);
+    return gridNearestFriendlyDamaged(
+      grids.combatants,
+      teamOf(unit),
+      unit.id,
+      unit.x,
+      unit.y,
+      range,
+    );
   },
   desiredVelocity(unit, target, owner, meta, slot, timeSeconds) {
     if (target) {
@@ -247,7 +263,7 @@ const REPAIR_BEHAVIOR: KindBehavior = {
  * simulation.ts (it's gated on collider contact, not target identity).
  */
 const MINER: KindBehavior = {
-  acquireTarget(unit, state, meta) {
+  acquireTarget(unit, state, meta, grids) {
     const range = meta.miningRange ?? meta.aggroRadius;
     if (unit.targetId) {
       const held = state.asteroids.get(unit.targetId);
@@ -258,7 +274,7 @@ const MINER: KindBehavior = {
         return held as unknown as Combatant;
       }
     }
-    const found = nearestAsteroid(state, unit.x, unit.y, range);
+    const found = gridNearestAsteroid(grids.asteroids, unit.x, unit.y, range);
     return (found as unknown as Combatant) ?? null;
   },
   desiredVelocity(unit, target, owner, meta, slot, timeSeconds) {

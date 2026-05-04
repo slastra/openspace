@@ -4,6 +4,7 @@ import {
   COLLISION_DAMAGE_MIN,
   COLLISION_DAMAGE_PER_SPEED,
   CREDITS_PER_ASTEROID_HP,
+  MAX_PROJECTILES_PER_ROOM,
   PLAYER_CONTACT_RADIUS,
   PLAYER_MAX_HP,
   PLAYER_MINING_DPS,
@@ -32,7 +33,6 @@ import {
   isStructure,
   isUnit,
   lookupCombatant,
-  nearestEnemy,
   playerDesiredVelocity,
   shortestAngleDelta,
   stationTarget,
@@ -51,6 +51,11 @@ import {
   stepWorld,
 } from "./physics.js";
 import { arriveAtStation, lookupKind } from "./behaviors.js";
+import {
+  TickGrids,
+  gridNearestEnemy,
+  rebuildTickGrids,
+} from "./spatial.js";
 import type { Player, SlotInfo, Unit, UnitKindMeta } from "@openspace/shared";
 
 /**
@@ -117,6 +122,14 @@ export interface SimContext {
    *  computed from positions matches what the client interpolates between
    *  (vs raw bodyVelocity which can disagree after collisions). */
   lastEntityPos: Map<string, { x: number; y: number }>;
+  /** Per-tick spatial indexes — replaces O(N) walks in target acquisition
+   *  and unit separation with cell-local scans. Rebuilt at the top of
+   *  every `simulateTick`. */
+  grids: TickGrids;
+  /** Monotonically increasing tick counter. Used to stagger heavy AI
+   *  passes (e.g. target re-acquisition) across ticks so we don't pay the
+   *  full cost every frame. */
+  tickIndex: number;
 }
 
 export function simulateTick(
@@ -126,8 +139,10 @@ export function simulateTick(
   phys: PhysicsWorld,
   ctx: SimContext,
 ): TickResult {
+  ctx.tickIndex = (ctx.tickIndex + 1) | 0;
   applyPlayerInputs(state, inputQueues, bodyRefs);
   applySupplyDeactivation(state);
+  rebuildTickGrids(ctx.grids, state);
   runUnitAI(state, bodyRefs, ctx);
   stepWorld(phys);
   resolveCollisions(state, phys, bodyRefs, ctx.lastAttackerByVictim);
@@ -307,11 +322,11 @@ function runUnitAI(state: ArenaState, bodyRefs: Map<string, BodyRef>, ctx: SimCo
         setBodyVelocity(ref.body, 0, 0);
         continue;
       }
-      orbitAnchor(unit, ref, w.x, w.y, slot, meta, state, timeSeconds);
+      orbitAnchor(unit, ref, w.x, w.y, slot, meta, ctx, timeSeconds);
       continue;
     }
     if (unit.deactivated && owner) {
-      orbitAnchor(unit, ref, owner.x, owner.y, slot, meta, state, phaseFor(owner.id));
+      orbitAnchor(unit, ref, owner.x, owner.y, slot, meta, ctx, phaseFor(owner.id));
       continue;
     }
 
@@ -331,12 +346,29 @@ function runUnitAI(state: ArenaState, bodyRefs: Map<string, BodyRef>, ctx: SimCo
         vx = (dx / dist) * meta.attackSpeed;
         vy = (dy / dist) * meta.attackSpeed;
       }
-      const adjusted = applySeparation(unit, { vx, vy }, state, meta);
+      const adjusted = applySeparation(unit, { vx, vy }, ctx, meta);
       setBodyVelocity(ref.body, adjusted.vx, adjusted.vy);
       continue;
     }
 
-    const target = behavior.acquireTarget(unit, state, meta);
+    // Stagger target re-acquisition to ~10Hz. The slot index + tick index
+    // mod 3 spreads the heavy passes evenly across frames so we never get a
+    // "whole world re-acquires this tick" CPU spike. A unit without a held
+    // target re-acquires immediately so newly-spawned units engage on tick 1
+    // rather than waiting up to two ticks (~67ms).
+    let target: Combatant | null;
+    const reacquire =
+      !unit.targetId || ((ctx.tickIndex + unit.slotIndex) % 3) === 0;
+    if (reacquire) {
+      target = behavior.acquireTarget(unit, state, meta, ctx.grids);
+    } else {
+      target =
+        lookupCombatant(state, unit.targetId) ??
+        ((state.asteroids.get(unit.targetId) as unknown as Combatant) || null);
+      if (!target || target.hp <= 0) {
+        target = behavior.acquireTarget(unit, state, meta, ctx.grids);
+      }
+    }
     unit.targetId = target ? target.id : "";
 
     const desired = behavior.desiredVelocity(
@@ -361,7 +393,7 @@ function runUnitAI(state: ArenaState, bodyRefs: Map<string, BodyRef>, ctx: SimCo
         desired.vy += m.vy;
       }
     }
-    const adjusted = applySeparation(unit, desired, state, meta);
+    const adjusted = applySeparation(unit, desired, ctx, meta);
     // Acceleration cap: clamp the per-tick velocity *change* so sharp AI
     // intent flips (formation→chase, target switch, asteroid death) don't
     // produce single-tick discontinuities that 20Hz snapshot interp renders
@@ -419,7 +451,7 @@ function orbitAnchor(
   anchorY: number,
   slot: SlotInfo,
   meta: UnitKindMeta,
-  state: ArenaState,
+  ctx: SimContext,
   timeSeconds: number,
 ) {
   unit.targetId = "";
@@ -431,14 +463,14 @@ function orbitAnchor(
     station.y,
     meta.formationSpeed,
   );
-  const adjusted = applySeparation(unit, desired, state, meta);
+  const adjusted = applySeparation(unit, desired, ctx, meta);
   setBodyVelocity(ref.body, adjusted.vx, adjusted.vy);
 }
 
 function applySeparation(
   unit: Unit,
   desired: { vx: number; vy: number },
-  state: ArenaState,
+  ctx: SimContext,
   meta: UnitKindMeta,
 ): { vx: number; vy: number } {
   const radius = meta.contactRadius * 3.5;
@@ -446,19 +478,18 @@ function applySeparation(
   const team = teamOf(unit);
   let sx = 0;
   let sy = 0;
-  for (const other of state.units.values()) {
-    if (other.id === unit.id) continue;
-    if (other.hp <= 0) continue;
-    if (teamOf(other) !== team) continue;
+  ctx.grids.units.forEachInRadius(unit.x, unit.y, radius, (other) => {
+    if (other.id === unit.id) return;
+    if (teamOf(other) !== team) return;
     const dx = unit.x - other.x;
     const dy = unit.y - other.y;
     const d2 = dx * dx + dy * dy;
-    if (d2 > radSq || d2 < 1e-4) continue;
+    if (d2 > radSq || d2 < 1e-4) return;
     const d = Math.sqrt(d2);
     const strength = 1 - d / radius;
     sx += (dx / d) * strength;
     sy += (dy / d) * strength;
-  }
+  });
   if (sx === 0 && sy === 0) return desired;
   const blend = meta.attackSpeed * 0.6;
   return { vx: desired.vx + sx * blend, vy: desired.vy + sy * blend };
@@ -795,7 +826,7 @@ function runStructureAbilities(state: ArenaState, ctx: SimContext) {
       }
     }
     if (!target) {
-      target = nearestEnemy(state, s.ownerId, s.x, s.y, range);
+      target = gridNearestEnemy(ctx.grids.combatants, s.ownerId, s.x, s.y, range);
     }
     s.targetId = target ? target.id : "";
 
@@ -824,6 +855,11 @@ function spawnProjectile(
   damage: number,
   range: number,
 ) {
+  // Hard cap on simultaneous projectiles. Drops the shot under sustained
+  // gunner spam so the snapshot stream doesn't blow out — the firing unit's
+  // cooldown still resets in the caller, so the next attempt fires once a
+  // slot frees up.
+  if (state.projectiles.size >= MAX_PROJECTILES_PER_ROOM) return;
   const dx = tx - unit.x;
   const dy = ty - unit.y;
   const dist = Math.hypot(dx, dy) || 1;

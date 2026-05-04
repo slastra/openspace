@@ -11,6 +11,9 @@ import {
   Asteroid,
   BuildStructureMessage,
   CREDITS_PER_ASTEROID_HP,
+  MAX_PLAYERS_PER_ROOM,
+  MAX_STRUCTURES_PER_PLAYER,
+  MAX_UNITS_PER_PLAYER,
   RecycleStructureMessage,
   structureRecycleRefund,
   PLAYER_COLORS,
@@ -46,11 +49,13 @@ import {
   WALL_ENTITY_ID,
 } from "../physics.js";
 import { BodyRef, SimContext, simulateTick } from "../simulation.js";
+import { createTickGrids } from "../spatial.js";
 
 /** Width of the static perimeter walls in world units. */
 const WALL_THICKNESS = 40;
 
 export class ArenaRoom extends Room<ArenaState> {
+  override maxClients = MAX_PLAYERS_PER_ROOM;
   override state = new ArenaState();
   private physics!: PhysicsWorld;
   private bodyRefs = new Map<string, BodyRef>();
@@ -73,6 +78,8 @@ export class ArenaRoom extends Room<ArenaState> {
     pendingRespawnSet: new Set(),
     formationPhaseByOwner: new Map(),
     lastEntityPos: new Map(),
+    grids: createTickGrids(),
+    tickIndex: 0,
   };
 
   override async onCreate() {
@@ -102,6 +109,15 @@ export class ArenaRoom extends Room<ArenaState> {
       if (!meta) return;
       if (player.credits < meta.cost) return;
       if (player.supplyUsed + meta.supplyCost > player.supplyCap) return;
+      // Hard per-player live-unit cap. Counts only non-orphan units so a
+      // dead player's wreckage swarm doesn't block their respawn from
+      // spawning fresh units. Spawn rate is rate-limited (≤4/sec/player),
+      // so the walk cost is negligible.
+      let owned = 0;
+      for (const u of this.state.units.values()) {
+        if (u.ownerId === client.sessionId && !u.wreckageId) owned++;
+      }
+      if (owned >= MAX_UNITS_PER_PLAYER) return;
       const now = performance.now();
       const last = this.lastUnitSpawnAt.get(client.sessionId) ?? 0;
       if (now - last < UNIT_SPAWN_COOLDOWN_MS) return;
@@ -121,10 +137,13 @@ export class ArenaRoom extends Room<ArenaState> {
       const sx = snapToGrid(payload.x);
       const sy = snapToGrid(payload.y);
       if (sx <= 0 || sx >= WORLD_WIDTH || sy <= 0 || sy >= WORLD_HEIGHT) return;
-      // Reject stacking another structure on the exact same cell.
+      // Hard per-player structure cap + reject stacking on the same cell.
+      let ownedStructures = 0;
       for (const s of this.state.structures.values()) {
         if (s.x === sx && s.y === sy) return;
+        if (s.ownerId === client.sessionId) ownedStructures++;
       }
+      if (ownedStructures >= MAX_STRUCTURES_PER_PLAYER) return;
       // Reject placement that would trap a live player ship inside the
       // structure's collider — Rapier can't push a body out of a fixed body
       // it's spawned inside, so the ship would jitter against the wall every
