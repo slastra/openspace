@@ -26,6 +26,7 @@ import {
   allCombatants,
   applyDamage,
   clamp,
+  lerp,
   contactRadiusOf,
   isNeutral,
   isPlayer,
@@ -248,31 +249,37 @@ function runUnitAI(state: ArenaState, bodyRefs: Map<string, BodyRef>, ctx: SimCo
   // Server clock seconds — fallback phase for non-owner anchors (wreckages
   // are stationary, so their orbit can run at full rate from global time).
   const timeSeconds = state.serverTime / 1000;
-  // Per-owner phase: advances at full rate while the owner's ship is at
-  // rest, freezes while they're moving fast. Linear ramp between LO and HI
-  // speeds. Resuming from a frozen phase avoids any orbit "snap" — units
-  // pick up exactly where they left off.
-  const ownerPhases = new Map<string, number>();
+  // Per-owner motion state. `orbitScale` is 1 when the ship is at rest and
+  // ramps to 0 at FORMATION_FREEZE_HI_SPEED — used both to freeze the orbit
+  // phase (so units don't chase a rotating slot) and to blend between the
+  // orbital station velocity and a flock-with-the-ship velocity.
+  const ownerMotion = new Map<
+    string,
+    { vx: number; vy: number; phase: number; orbitScale: number }
+  >();
   for (const ownerId of state.players.keys()) {
     const ref = bodyRefs.get(ownerId);
-    let speed = 0;
+    let vx = 0;
+    let vy = 0;
     if (ref) {
       const v = bodyVelocity(ref.body);
-      speed = Math.hypot(v.x, v.y);
+      vx = v.x;
+      vy = v.y;
     }
-    const scale = clamp(
+    const speed = Math.hypot(vx, vy);
+    const orbitScale = clamp(
       1 - (speed - FORMATION_FREEZE_LO_SPEED) /
         (FORMATION_FREEZE_HI_SPEED - FORMATION_FREEZE_LO_SPEED),
       0,
       1,
     );
     const prev = ctx.formationPhaseByOwner.get(ownerId) ?? timeSeconds;
-    const next = prev + TICK_DT * scale;
-    ctx.formationPhaseByOwner.set(ownerId, next);
-    ownerPhases.set(ownerId, next);
+    const phase = prev + TICK_DT * orbitScale;
+    ctx.formationPhaseByOwner.set(ownerId, phase);
+    ownerMotion.set(ownerId, { vx, vy, phase, orbitScale });
   }
   const phaseFor = (ownerId: string | null): number =>
-    (ownerId !== null ? ownerPhases.get(ownerId) : undefined) ?? timeSeconds;
+    (ownerId !== null ? ownerMotion.get(ownerId)?.phase : undefined) ?? timeSeconds;
 
   for (const [unitId, unit] of state.units) {
     const ref = bodyRefs.get(unitId);
@@ -336,10 +343,60 @@ function runUnitAI(state: ArenaState, bodyRefs: Map<string, BodyRef>, ctx: SimCo
       slot,
       phaseFor(owner?.id ?? null),
     );
-    const adjusted = applySeparation(unit, desired, state, meta);
+    // Flock-with-leader: when the owner is moving and the unit isn't
+    // committed to a target, blend the behavior's station-based velocity
+    // with a flock velocity (alignment to ship + cohesion when far). At
+    // rest the orbital formation we love is preserved unchanged; at
+    // cruising speed units cruise alongside in a loose cluster instead of
+    // chasing a slot that's both translating with the ship and spinning.
+    let blended = desired;
+    if (!target && owner) {
+      const m = ownerMotion.get(owner.id);
+      if (m && m.orbitScale < 1) {
+        const flockScale = 1 - m.orbitScale;
+        const flock = flockDesired(unit, owner.x, owner.y, m.vx, m.vy, meta);
+        blended = {
+          vx: lerp(desired.vx, flock.vx, flockScale),
+          vy: lerp(desired.vy, flock.vy, flockScale),
+        };
+      }
+    }
+    const adjusted = applySeparation(unit, blended, state, meta);
     setBodyVelocity(ref.body, adjusted.vx, adjusted.vy);
   }
 }
+
+/** Boid-flock desired velocity: alignment with the leader's velocity + a
+ *  gentle cohesion pull only when the unit drifts beyond
+ *  FLOCK_COHESION_RADIUS. Separation is applied separately by the caller
+ *  (existing applySeparation pass), completing the boid trio. */
+function flockDesired(
+  unit: Unit,
+  ownerX: number,
+  ownerY: number,
+  ownerVx: number,
+  ownerVy: number,
+  meta: UnitKindMeta,
+): { vx: number; vy: number } {
+  let vx = ownerVx;
+  let vy = ownerVy;
+  const dx = ownerX - unit.x;
+  const dy = ownerY - unit.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist > FLOCK_COHESION_RADIUS && dist > 1) {
+    const pull =
+      clamp((dist - FLOCK_COHESION_RADIUS) / FLOCK_COHESION_RAMP, 0, 1) *
+      meta.formationSpeed;
+    vx += (dx / dist) * pull;
+    vy += (dy / dist) * pull;
+  }
+  return { vx, vy };
+}
+
+/** Beyond this distance from the leader, a flocking unit gets pulled back. */
+const FLOCK_COHESION_RADIUS = 180;
+/** The cohesion pull ramps from 0 to formationSpeed across this distance. */
+const FLOCK_COHESION_RAMP = 100;
 
 /**
  * Boid-style separation: nudge a unit's desired velocity away from any
