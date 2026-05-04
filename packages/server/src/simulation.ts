@@ -71,6 +71,11 @@ export interface TickResult {
   culledAsteroidIds: string[];
 }
 
+/** Owner ship speed below which formation orbit runs at full rate. */
+const FORMATION_FREEZE_LO_SPEED = 30;
+/** Owner ship speed at and above which formation orbit is fully frozen. */
+const FORMATION_FREEZE_HI_SPEED = 100;
+
 /**
  * One server tick.
  *   1. Apply each player's most-recent queued input as a velocity to their body.
@@ -101,6 +106,12 @@ export interface SimContext {
    *  the set and teleports + heals each one. Players stay dead until they
    *  appear here, so dying never auto-respawns. */
   pendingRespawnSet: Set<string>;
+  /** Per-owner formation orbit phase (radians-of-time). Advances at full
+   *  rate while the owner is stationary and freezes while they're moving,
+   *  so units don't have to chase a slot that's both translating with the
+   *  ship and rotating around it — that compounding was visible as jitter
+   *  on snapshot-interpolated unit motion. */
+  formationPhaseByOwner: Map<string, number>;
 }
 
 export function simulateTick(
@@ -112,7 +123,7 @@ export function simulateTick(
 ): TickResult {
   applyPlayerInputs(state, inputQueues, bodyRefs);
   applySupplyDeactivation(state);
-  runUnitAI(state, bodyRefs);
+  runUnitAI(state, bodyRefs, ctx);
   stepWorld(phys);
   resolveCollisions(state, phys, bodyRefs, ctx.lastAttackerByVictim);
   readBackPlayers(state, bodyRefs);
@@ -230,13 +241,38 @@ function applySupplyDeactivation(state: ArenaState) {
   }
 }
 
-function runUnitAI(state: ArenaState, bodyRefs: Map<string, BodyRef>) {
+function runUnitAI(state: ArenaState, bodyRefs: Map<string, BodyRef>, ctx: SimContext) {
   // Slot assignment: each owner's units get stations on concentric rings,
   // sorted stably by id so slots don't reshuffle every tick.
   const slotInfo = computeSlots(state);
-  // Server clock seconds — drives the slow formation orbit. Sourced from
-  // state.serverTime (set by ArenaRoom each tick) so all units agree.
+  // Server clock seconds — fallback phase for non-owner anchors (wreckages
+  // are stationary, so their orbit can run at full rate from global time).
   const timeSeconds = state.serverTime / 1000;
+  // Per-owner phase: advances at full rate while the owner's ship is at
+  // rest, freezes while they're moving fast. Linear ramp between LO and HI
+  // speeds. Resuming from a frozen phase avoids any orbit "snap" — units
+  // pick up exactly where they left off.
+  const ownerPhases = new Map<string, number>();
+  for (const ownerId of state.players.keys()) {
+    const ref = bodyRefs.get(ownerId);
+    let speed = 0;
+    if (ref) {
+      const v = bodyVelocity(ref.body);
+      speed = Math.hypot(v.x, v.y);
+    }
+    const scale = clamp(
+      1 - (speed - FORMATION_FREEZE_LO_SPEED) /
+        (FORMATION_FREEZE_HI_SPEED - FORMATION_FREEZE_LO_SPEED),
+      0,
+      1,
+    );
+    const prev = ctx.formationPhaseByOwner.get(ownerId) ?? timeSeconds;
+    const next = prev + TICK_DT * scale;
+    ctx.formationPhaseByOwner.set(ownerId, next);
+    ownerPhases.set(ownerId, next);
+  }
+  const phaseFor = (ownerId: string | null): number =>
+    (ownerId !== null ? ownerPhases.get(ownerId) : undefined) ?? timeSeconds;
 
   for (const [unitId, unit] of state.units) {
     const ref = bodyRefs.get(unitId);
@@ -264,7 +300,7 @@ function runUnitAI(state: ArenaState, bodyRefs: Map<string, BodyRef>) {
       continue;
     }
     if (unit.deactivated && owner) {
-      orbitAnchor(unit, ref, owner.x, owner.y, slot, meta, state, timeSeconds);
+      orbitAnchor(unit, ref, owner.x, owner.y, slot, meta, state, phaseFor(owner.id));
       continue;
     }
 
@@ -274,7 +310,7 @@ function runUnitAI(state: ArenaState, bodyRefs: Map<string, BodyRef>) {
     // behind the dashing ship instead of getting left behind in formation.
     if (owner?.dashing) {
       unit.targetId = "";
-      const station = stationTarget(owner.x, owner.y, slot, meta.contactRadius, timeSeconds);
+      const station = stationTarget(owner.x, owner.y, slot, meta.contactRadius, phaseFor(owner.id));
       const dx = station.x - unit.x;
       const dy = station.y - unit.y;
       const dist = Math.hypot(dx, dy);
@@ -292,7 +328,14 @@ function runUnitAI(state: ArenaState, bodyRefs: Map<string, BodyRef>) {
     const target = behavior.acquireTarget(unit, state, meta);
     unit.targetId = target ? target.id : "";
 
-    const desired = behavior.desiredVelocity(unit, target, owner, meta, slot, timeSeconds);
+    const desired = behavior.desiredVelocity(
+      unit,
+      target,
+      owner,
+      meta,
+      slot,
+      phaseFor(owner?.id ?? null),
+    );
     const adjusted = applySeparation(unit, desired, state, meta);
     setBodyVelocity(ref.body, adjusted.vx, adjusted.vy);
   }
