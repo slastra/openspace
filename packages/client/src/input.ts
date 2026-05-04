@@ -14,6 +14,9 @@ export interface InputState {
   onKeyTap(key: string, handler: () => void): () => void;
   /** Fires once when the key is released. Pair with onKeyTap for hold-to-act. */
   onKeyUp(key: string, handler: () => void): () => void;
+  /** True while `key` (KeyboardEvent.code) is currently held. Used by the
+   *  per-frame loop for repeat-on-hold behaviors (e.g. unit spawn). */
+  isKeyDown(key: string): boolean;
   /**
    * Subscribe to a primary-button click on the canvas. Handler receives the
    * cursor position in CSS pixels relative to the canvas. Returns an
@@ -33,6 +36,7 @@ export function createInput(app: Application): InputState {
 
   const tapHandlers = new Map<string, Set<() => void>>();
   const upHandlers = new Map<string, Set<() => void>>();
+  const downKeys = new Set<string>();
   const clickHandlers = new Set<(x: number, y: number) => void>();
   const rightClickHandlers = new Set<() => void>();
 
@@ -50,11 +54,13 @@ export function createInput(app: Application): InputState {
   };
   const onKeyDown = (ev: KeyboardEvent) => {
     if (ev.repeat) return;
+    downKeys.add(ev.code);
     const subs = tapHandlers.get(ev.code);
     if (!subs) return;
     for (const fn of subs) fn();
   };
   const onKeyUp = (ev: KeyboardEvent) => {
+    downKeys.delete(ev.code);
     const subs = upHandlers.get(ev.code);
     if (!subs) return;
     for (const fn of subs) fn();
@@ -86,6 +92,7 @@ export function createInput(app: Application): InputState {
   // registered onKeyUp handlers on blur to keep dash-style holds from
   // getting stuck "down" when the user tabs away.
   window.addEventListener("blur", () => {
+    downKeys.clear();
     for (const subs of upHandlers.values()) for (const fn of subs) fn();
   });
 
@@ -118,6 +125,9 @@ export function createInput(app: Application): InputState {
     onRightClick(handler) {
       rightClickHandlers.add(handler);
       return () => rightClickHandlers.delete(handler);
+    },
+    isKeyDown(key) {
+      return downKeys.has(key);
     },
   };
   return state;

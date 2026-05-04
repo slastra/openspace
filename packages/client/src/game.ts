@@ -2,6 +2,7 @@ import {
   DASH_SPEED_MULTIPLIER,
   PLAYER_CONTACT_RADIUS,
   STRUCTURE_KIND_META,
+  UNIT_SPAWN_COOLDOWN_MS,
   StructureKindName,
   UNIT_KIND_META,
   snapToGrid,
@@ -113,12 +114,19 @@ export function startGame({ renderer, input, net }: GameDeps) {
     }
   };
 
-  input.onKeyTap("KeyA", () => net.spawnUnit("rammer"));
-  input.onKeyTap("KeyS", () => net.spawnUnit("miner"));
-  input.onKeyTap("KeyD", () => net.spawnUnit("gunner"));
-  input.onKeyTap("KeyF", () => net.spawnUnit("laser"));
-  input.onKeyTap("KeyG", () => net.spawnUnit("repair"));
-  input.onKeyTap("KeyH", () => net.spawnUnit("shielder"));
+  // Hold-to-spawn: bindings checked per frame in the ticker. Tapping fires
+  // immediately (first frame the key goes down); holding repeats at the
+  // server cooldown cadence so the message rate matches what the server
+  // will accept — no point firing 60Hz worth of message just to be dropped.
+  const SPAWN_BINDINGS: ReadonlyArray<readonly [string, string]> = [
+    ["KeyA", "rammer"],
+    ["KeyS", "miner"],
+    ["KeyD", "gunner"],
+    ["KeyF", "laser"],
+    ["KeyG", "repair"],
+    ["KeyH", "shielder"],
+  ];
+  const lastSpawnSentAt = new Map<string, number>();
   input.onKeyTap("F1", () => debug.toggle());
   // Spacebar: tap = recall fleet AND start sustained dash thrust. Hold to
   // keep dashing — every owned unit takes engine-wash damage while held.
@@ -411,6 +419,17 @@ export function startGame({ renderer, input, net }: GameDeps) {
     const dt = Math.min(0.1, (now - lastFrame) / 1000);
     lastFrame = now;
     const serverNow = serverOffset !== null ? now - serverOffset : now;
+
+    // Held-key spawn: tap fires immediately (lastSent at 0); holding repeats
+    // at server cooldown cadence so we don't flood with messages the server
+    // would just drop.
+    for (const [key, kind] of SPAWN_BINDINGS) {
+      if (!input.isKeyDown(key)) continue;
+      const last = lastSpawnSentAt.get(key) ?? 0;
+      if (now - last < UNIT_SPAWN_COOLDOWN_MS) continue;
+      net.spawnUnit(kind);
+      lastSpawnSentAt.set(key, now);
+    }
 
     if (local) {
       if (local.hp > 0) {
