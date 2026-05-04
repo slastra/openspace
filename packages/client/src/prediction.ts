@@ -203,12 +203,14 @@ export class LocalPrediction {
       this.displayY = state.y;
       this.displayRot = state.rotation;
     } else {
-      // Small drift — jump the simulation straight to authority, but record
-      // the *current live* display offset as error so the rendered ship
-      // doesn't move this frame. liveDisplay must be recomputed from the
-      // pre-reconcile sim with the current accumulator alpha, NOT read from
-      // this.displayX (which is one frame stale and would re-inject lag,
-      // making error compound across snapshots instead of converging).
+      // Small drift — adjust cur to authority, leave prev alone. The in-
+      // progress prev→cur lerp segment continues to advance smoothly toward
+      // the corrected end, so motion never freezes between snapshot and the
+      // next tick (which it would if we collapsed prev=cur=state). Error
+      // absorbs the visual delta caused by cur changing under a fixed prev.
+      // When prediction matches authority exactly (state == cur), error
+      // stays at zero — the formula is self-cancelling for the no-drift
+      // case, so steady motion has no visible reconcile artifacts.
       const alpha = clamp01(this.accumulator / TICK_DT);
       const liveSimX = lerp(this.prevX, this.curX, alpha);
       const liveSimY = lerp(this.prevY, this.curY, alpha);
@@ -216,12 +218,16 @@ export class LocalPrediction {
       const liveDisplayX = liveSimX - this.errorX;
       const liveDisplayY = liveSimY - this.errorY;
       const liveDisplayRot = liveSimRot - this.errorRot;
-      this.errorX = state.x - liveDisplayX;
-      this.errorY = state.y - liveDisplayY;
-      this.errorRot = shortestAngleDelta(liveDisplayRot, state.rotation);
-      this.prevX = state.x;
-      this.prevY = state.y;
-      this.prevRot = state.rotation;
+      this.curX = state.x;
+      this.curY = state.y;
+      this.curRot = state.rotation;
+      const newSimX = lerp(this.prevX, this.curX, alpha);
+      const newSimY = lerp(this.prevY, this.curY, alpha);
+      const newSimRot = lerpAngle(this.prevRot, this.curRot, alpha);
+      this.errorX = newSimX - liveDisplayX;
+      this.errorY = newSimY - liveDisplayY;
+      this.errorRot = shortestAngleDelta(liveDisplayRot, newSimRot);
+      return;
     }
     this.curX = state.x;
     this.curY = state.y;
