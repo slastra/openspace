@@ -40,7 +40,14 @@ export class Unit {
     renderer.entities.addChildAt(this.view.container, 0);
 
     this.interp = new RemoteInterpolator();
-    this.interp.push({ t: snap.serverTime, x: snap.x, y: snap.y, rotation: snap.rotation });
+    this.interp.push({
+      t: snap.serverTime,
+      x: snap.x,
+      y: snap.y,
+      vx: snap.vx,
+      vy: snap.vy,
+      rotation: snap.rotation,
+    });
 
     this.hp = snap.hp;
     this.maxHp = snap.maxHp;
@@ -53,7 +60,14 @@ export class Unit {
   }
 
   applyServerUpdate(snap: UnitSnapshot) {
-    this.interp.push({ t: snap.serverTime, x: snap.x, y: snap.y, rotation: snap.rotation });
+    this.interp.push({
+      t: snap.serverTime,
+      x: snap.x,
+      y: snap.y,
+      vx: snap.vx,
+      vy: snap.vy,
+      rotation: snap.rotation,
+    });
     this.kind = snap.kind;
     this.color = snap.color;
     this.hp = snap.hp;

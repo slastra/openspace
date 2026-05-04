@@ -127,6 +127,8 @@ export class RemotePlayer {
       t: snap.serverTime,
       x: snap.x,
       y: snap.y,
+      vx: snap.vx,
+      vy: snap.vy,
       rotation: snap.rotation,
     });
     this.color = snap.color;
@@ -147,6 +149,8 @@ export class RemotePlayer {
       t: snap.serverTime,
       x: snap.x,
       y: snap.y,
+      vx: snap.vx,
+      vy: snap.vy,
       rotation: snap.rotation,
     });
     this.color = snap.color;

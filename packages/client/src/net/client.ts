@@ -24,6 +24,8 @@ export interface PlayerSnapshot {
   name: string;
   x: number;
   y: number;
+  vx: number;
+  vy: number;
   rotation: number;
   color: string;
   hp: number;
@@ -100,6 +102,8 @@ export interface UnitSnapshot {
   kind: string;
   x: number;
   y: number;
+  vx: number;
+  vy: number;
   rotation: number;
   hp: number;
   maxHp: number;
@@ -295,6 +299,8 @@ function toPlayerSnapshot(p: Player, serverTime: number): PlayerSnapshot {
     name: p.name,
     x: p.x,
     y: p.y,
+    vx: p.vx,
+    vy: p.vy,
     rotation: p.rotation,
     color: p.color,
     hp: p.hp,
@@ -388,6 +394,8 @@ function toUnitSnapshot(u: Unit, id: string, serverTime: number): UnitSnapshot {
     kind: u.kind,
     x: u.x,
     y: u.y,
+    vx: u.vx,
+    vy: u.vy,
     rotation: u.rotation,
     hp: u.hp,
     maxHp: u.maxHp,

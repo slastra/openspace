@@ -11,6 +11,10 @@ export class Player extends Schema {
   declare kind: string;
   declare x: number;
   declare y: number;
+  /** Sample-to-sample velocity (Δposition / TICK_DT) sent each snapshot.
+   *  Drives client cubic Hermite interpolation; secant-clamped client-side. */
+  declare vx: number;
+  declare vy: number;
   declare rotation: number;
   declare color: string;
   declare hp: number;
@@ -38,6 +42,8 @@ export class Player extends Schema {
     this.kind = "player";
     this.x = 0;
     this.y = 0;
+    this.vx = 0;
+    this.vy = 0;
     this.rotation = 0;
     this.color = "#ffffff";
     this.hp = 0;
@@ -59,6 +65,8 @@ defineTypes(Player, {
   kind: "string",
   x: "number",
   y: "number",
+  vx: "number",
+  vy: "number",
   rotation: "number",
   color: "string",
   hp: "number",
@@ -88,6 +96,9 @@ export class Unit extends Schema {
   declare kind: string;
   declare x: number;
   declare y: number;
+  /** Sample-to-sample velocity (Δposition / TICK_DT) for client Hermite interp. */
+  declare vx: number;
+  declare vy: number;
   /** Facing angle in radians; derived from target (if any) or velocity. */
   declare rotation: number;
   declare hp: number;
@@ -117,6 +128,8 @@ export class Unit extends Schema {
     this.kind = "";
     this.x = 0;
     this.y = 0;
+    this.vx = 0;
+    this.vy = 0;
     this.rotation = 0;
     this.hp = 0;
     this.maxHp = 0;
@@ -137,6 +150,8 @@ defineTypes(Unit, {
   kind: "string",
   x: "number",
   y: "number",
+  vx: "number",
+  vy: "number",
   rotation: "number",
   hp: "number",
   maxHp: "number",

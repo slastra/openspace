@@ -112,6 +112,11 @@ export interface SimContext {
    *  ship and rotating around it — that compounding was visible as jitter
    *  on snapshot-interpolated unit motion. */
   formationPhaseByOwner: Map<string, number>;
+  /** Per-entity previous-tick (x, y) for computing sample-to-sample velocity
+   *  written to schema.vx/vy. Used by client Hermite interpolation; secant
+   *  computed from positions matches what the client interpolates between
+   *  (vs raw bodyVelocity which can disagree after collisions). */
+  lastEntityPos: Map<string, { x: number; y: number }>;
 }
 
 export function simulateTick(
@@ -126,8 +131,8 @@ export function simulateTick(
   runUnitAI(state, bodyRefs, ctx);
   stepWorld(phys);
   resolveCollisions(state, phys, bodyRefs, ctx.lastAttackerByVictim);
-  readBackPlayers(state, bodyRefs);
-  readBackUnits(state, bodyRefs);
+  readBackPlayers(state, bodyRefs, ctx);
+  readBackUnits(state, bodyRefs, ctx);
   mineAsteroids(state, ctx.creditAccrual);
   runUnitAbilities(state, ctx);
   runStructureAbilities(state, ctx);
@@ -474,25 +479,68 @@ function computeSlots(state: ArenaState): Map<string, SlotInfo> {
   return out;
 }
 
-function readBackPlayers(state: ArenaState, bodyRefs: Map<string, BodyRef>) {
+/** Sample-to-sample velocity (Δposition / TICK_DT) — what the client needs
+ *  for cubic Hermite snapshot interp. Computed from positions (not raw
+ *  bodyVelocity) so the secant matches what the client actually
+ *  interpolates between, even after collision-induced position corrections. */
+function sampleVelocity(
+  ctx: SimContext,
+  id: string,
+  prevX: number,
+  prevY: number,
+  newX: number,
+  newY: number,
+  entity: { vx: number; vy: number },
+) {
+  const last = ctx.lastEntityPos.get(id);
+  if (last) {
+    entity.vx = (newX - last.x) / TICK_DT;
+    entity.vy = (newY - last.y) / TICK_DT;
+  } else {
+    entity.vx = 0;
+    entity.vy = 0;
+  }
+  // Cache the *new* position for next tick's secant. We could use prevX
+  // (this tick's pre-step position) but newX gives us a one-tick window
+  // that exactly matches what the client lerps between snapshots.
+  ctx.lastEntityPos.set(id, { x: newX, y: newY });
+  void prevX;
+  void prevY;
+}
+
+function readBackPlayers(
+  state: ArenaState,
+  bodyRefs: Map<string, BodyRef>,
+  ctx: SimContext,
+) {
   for (const [sessionId, player] of state.players) {
     const ref = bodyRefs.get(sessionId);
     if (!ref) continue;
     const pos = bodyPosition(ref.body);
-    player.x = clamp(pos.x, 0, WORLD_WIDTH);
-    player.y = clamp(pos.y, 0, WORLD_HEIGHT);
+    const newX = clamp(pos.x, 0, WORLD_WIDTH);
+    const newY = clamp(pos.y, 0, WORLD_HEIGHT);
+    sampleVelocity(ctx, sessionId, player.x, player.y, newX, newY, player);
+    player.x = newX;
+    player.y = newY;
     // Rotation is set in applyPlayerInputs from the desired (cursor) direction
     // — see the comment there for why we don't use actual velocity here.
   }
 }
 
-function readBackUnits(state: ArenaState, bodyRefs: Map<string, BodyRef>) {
+function readBackUnits(
+  state: ArenaState,
+  bodyRefs: Map<string, BodyRef>,
+  ctx: SimContext,
+) {
   for (const [unitId, unit] of state.units) {
     const ref = bodyRefs.get(unitId);
     if (!ref) continue;
     const pos = bodyPosition(ref.body);
-    unit.x = clamp(pos.x, 0, WORLD_WIDTH);
-    unit.y = clamp(pos.y, 0, WORLD_HEIGHT);
+    const newX = clamp(pos.x, 0, WORLD_WIDTH);
+    const newY = clamp(pos.y, 0, WORLD_HEIGHT);
+    sampleVelocity(ctx, unitId, unit.x, unit.y, newX, newY, unit);
+    unit.x = newX;
+    unit.y = newY;
 
     // Facing: aim at target if we have one (resolved across players, units,
     // and asteroids — miners face their rock). Else fall back to velocity

@@ -70,6 +70,7 @@ export class ArenaRoom extends Room<ArenaState> {
     allocWreckageId: () => `w${++this.wreckageCounter}`,
     pendingRespawnSet: new Set(),
     formationPhaseByOwner: new Map(),
+    lastEntityPos: new Map(),
   };
 
   override async onCreate() {
