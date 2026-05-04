@@ -12,6 +12,7 @@ import {
   PROJECTILE_RADIUS,
   PlayerInput,
   Projectile,
+  STARTING_CREDITS,
   TICK_DT,
   WORLD_HEIGHT,
   WORLD_WIDTH,
@@ -1067,6 +1068,11 @@ function cullAndRespawn(
     player.hp = PLAYER_MAX_HP;
     player.shield = player.maxShield;
     player.deathCount++;
+    let supplyOwned = 0;
+    for (const s of state.structures.values()) {
+      if (s.ownerId === id && s.kind === "supply") supplyOwned++;
+    }
+    player.credits = STARTING_CREDITS + supplyOwned;
   }
 
   return { culledAsteroidIds };
