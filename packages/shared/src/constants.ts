@@ -2,7 +2,11 @@ export const WORLD_WIDTH = 12000;
 export const WORLD_HEIGHT = 12000;
 
 export const TICK_RATE_HZ = 30;
-export const SNAPSHOT_RATE_HZ = 20;
+/** Snapshots/sec from server to clients. Must be an integer divisor of
+ *  TICK_RATE_HZ (or equal to it) so consecutive snapshot serverTimes have
+ *  consistent spacing. Mismatched rates produce alternating short/long
+ *  intervals that snapshot interp renders as visible motion stutter. */
+export const SNAPSHOT_RATE_HZ = 30;
 export const TICK_DT = 1 / TICK_RATE_HZ;
 
 export const PLAYER_SPEED = 300;
