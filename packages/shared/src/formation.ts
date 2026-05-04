@@ -10,8 +10,10 @@ export interface SlotInfo {
   total: number;
 }
 
-/** Radius of the innermost (ring 0) formation ring. */
-const STATION_BASE_RADIUS = 50;
+/** Radius of the innermost (ring 0) formation ring. Sized to leave a clear
+ *  gap around the player ship so owned units don't crowd the hull and
+ *  trigger collision damage on every nudge. */
+const STATION_BASE_RADIUS = 150;
 /** Distance between consecutive rings. Tuned so each ring is clearly distinct. */
 const STATION_RING_SPACING = 32;
 /** Arc length (in world units) reserved per slot — sets minimum ring density.
