@@ -77,6 +77,8 @@ export class LocalPrediction {
 
   private lastAckSeq = 0;
   private getObstacles: ObstacleProvider;
+  /** Magnitude of the most recent reconcile drift (state vs cur). For F1 debug. */
+  lastReconcileDrift = 0;
 
   constructor(initialX: number, initialY: number, getObstacles?: ObstacleProvider) {
     this.serverX = initialX;
@@ -190,6 +192,7 @@ export class LocalPrediction {
     }
 
     const drift = Math.hypot(state.x - this.curX, state.y - this.curY);
+    this.lastReconcileDrift = drift;
 
     if (drift > RECONCILE_SNAP_THRESHOLD) {
       // Large desync (respawn, teleport, big collision) — snap visibly and
@@ -246,6 +249,9 @@ export class LocalPrediction {
   }
   get acknowledgedSeq() {
     return this.lastAckSeq;
+  }
+  get errorMagnitude() {
+    return Math.hypot(this.errorX, this.errorY);
   }
   get pendingInputCount() {
     return this.buffer.length;

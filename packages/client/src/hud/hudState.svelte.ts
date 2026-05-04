@@ -57,6 +57,30 @@ class HudState {
     this.lastMinerals = value;
     this.minerals = value;
   }
+
+  /** Debug metrics — null when F1 overlay is off. Pushed each frame from
+   *  the game loop when the overlay is enabled. */
+  debug = $state<DebugMetrics | null>(null);
+}
+
+/** F1 debug panel data. All non-counter fields are smoothed over a rolling
+ *  window so single-frame outliers don't make the readouts unreadable. */
+export interface DebugMetrics {
+  fps: number;
+  frameDtMeanMs: number;
+  frameDtP99Ms: number;
+  snapshotIntervalMeanMs: number;
+  snapshotIntervalP99Ms: number;
+  snapshotsPerSec: number;
+  serverOffsetMs: number;
+  rttSpreadMs: number;
+  reconcileDriftU: number;
+  predictionErrorU: number;
+  pendingInputs: number;
+  units: number;
+  asteroids: number;
+  projectiles: number;
+  players: number;
 }
 
 export const hud = new HudState();

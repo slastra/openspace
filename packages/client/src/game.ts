@@ -27,7 +27,7 @@ import { DebugOverlay } from "./debug/overlay.js";
 import { HealTetherLayer } from "./render/heal-tether.js";
 import { MiningParticleLayer } from "./render/mining-particles.js";
 import { Minimap } from "./render/minimap.js";
-import { hud, LeaderboardEntry } from "./hud/hudState.svelte.js";
+import { hud, LeaderboardEntry, DebugMetrics } from "./hud/hudState.svelte.js";
 
 export interface GameDeps {
   renderer: Renderer;
@@ -79,14 +79,30 @@ export function startGame({ renderer, input, net }: GameDeps) {
   // RemoteInterpolator. The older "forever min" approach pinned to the
   // lowest-RTT sample seen and froze entities whenever transit exceeded it.
   let serverOffset: number | null = null;
+  // Diagnostic side-tables for the F1 debug panel. Cheap rolling windows;
+  // sized for ~2s of history at the relevant rate.
+  const offsetSamples: number[] = [];
+  const frameDtSamples: number[] = [];
+  const snapshotIntervals: number[] = [];
+  const snapshotArrivalTimes: number[] = [];
+  let lastSeenServerTime = 0;
   const updateOffset = (snapServerTime: number) => {
-    const offset = performance.now() - snapServerTime;
+    const now = performance.now();
+    const offset = now - snapServerTime;
     if (serverOffset === null) {
       serverOffset = offset;
     } else if (offset > serverOffset) {
       serverOffset = serverOffset * 0.9 + offset * 0.1;
     } else {
       serverOffset = serverOffset * 0.99 + offset * 0.01;
+    }
+    pushBounded(offsetSamples, offset, 60);
+    if (snapServerTime !== lastSeenServerTime) {
+      if (lastSeenServerTime !== 0) {
+        pushBounded(snapshotIntervals, snapServerTime - lastSeenServerTime, 60);
+      }
+      lastSeenServerTime = snapServerTime;
+      pushBounded(snapshotArrivalTimes, now, 60);
     }
   };
 
@@ -364,6 +380,7 @@ export function startGame({ renderer, input, net }: GameDeps) {
 
   let lastFrame = performance.now();
   let lastCredits = -1;
+  let lastDebugPush = 0;
   renderer.app.ticker.add(() => {
     const now = performance.now();
     const dt = Math.min(0.1, (now - lastFrame) / 1000);
@@ -411,6 +428,30 @@ export function startGame({ renderer, input, net }: GameDeps) {
     );
     effects.update(dt);
     debug.render(local, remotes, units, asteroids, structures, net.sessionId);
+
+    // F1 debug metrics: only refresh the panel when the overlay is on, and
+    // throttle to 4Hz so the numbers are readable instead of vibrating.
+    pushBounded(frameDtSamples, dt * 1000, 60);
+    if (debug.isEnabled()) {
+      if (now - lastDebugPush > 250) {
+        lastDebugPush = now;
+        hud.debug = collectDebugMetrics({
+          frameDtSamples,
+          snapshotIntervals,
+          snapshotArrivalTimes: snapshotArrivalTimes.slice(),
+          offsetSamples,
+          serverOffset,
+          local,
+          unitsCount: units.size,
+          asteroidsCount: asteroids.size,
+          projectilesCount: projectiles.size,
+          playersCount: remotes.size + (local ? 1 : 0),
+          now,
+        });
+      }
+    } else if (hud.debug !== null) {
+      hud.debug = null;
+    }
 
     if (local && local.credits !== lastCredits) {
       hud.setMinerals(local.credits);
@@ -593,4 +634,65 @@ function* worldObstacles(
       radius: meta.halfExtent,
     };
   }
+}
+
+function pushBounded(arr: number[], v: number, max: number) {
+  arr.push(v);
+  if (arr.length > max) arr.splice(0, arr.length - max);
+}
+
+function meanOf(arr: number[]): number {
+  if (arr.length === 0) return 0;
+  let sum = 0;
+  for (const v of arr) sum += v;
+  return sum / arr.length;
+}
+
+function p99Of(arr: number[]): number {
+  if (arr.length === 0) return 0;
+  const sorted = arr.slice().sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.99))]!;
+}
+
+interface DebugInputs {
+  frameDtSamples: number[];
+  snapshotIntervals: number[];
+  snapshotArrivalTimes: number[];
+  offsetSamples: number[];
+  serverOffset: number | null;
+  local: LocalPlayer | null;
+  unitsCount: number;
+  asteroidsCount: number;
+  projectilesCount: number;
+  playersCount: number;
+  now: number;
+}
+
+function collectDebugMetrics(d: DebugInputs): DebugMetrics {
+  const frameMean = meanOf(d.frameDtSamples);
+  // Snapshots/sec: count arrivals in the last 1000ms window.
+  const cutoff = d.now - 1000;
+  let snapshotsLastSec = 0;
+  for (const t of d.snapshotArrivalTimes) {
+    if (t >= cutoff) snapshotsLastSec++;
+  }
+  const offsetMin = d.offsetSamples.length === 0 ? 0 : Math.min(...d.offsetSamples);
+  const offsetMax = d.offsetSamples.length === 0 ? 0 : Math.max(...d.offsetSamples);
+  return {
+    fps: frameMean > 0 ? 1000 / frameMean : 0,
+    frameDtMeanMs: frameMean,
+    frameDtP99Ms: p99Of(d.frameDtSamples),
+    snapshotIntervalMeanMs: meanOf(d.snapshotIntervals),
+    snapshotIntervalP99Ms: p99Of(d.snapshotIntervals),
+    snapshotsPerSec: snapshotsLastSec,
+    serverOffsetMs: d.serverOffset ?? 0,
+    rttSpreadMs: offsetMax - offsetMin,
+    reconcileDriftU: d.local?.prediction.lastReconcileDrift ?? 0,
+    predictionErrorU: d.local?.prediction.errorMagnitude ?? 0,
+    pendingInputs: d.local?.prediction.pendingInputCount ?? 0,
+    units: d.unitsCount,
+    asteroids: d.asteroidsCount,
+    projectiles: d.projectilesCount,
+    players: d.playersCount,
+  };
 }
