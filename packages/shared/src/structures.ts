@@ -61,3 +61,14 @@ export function isKnownStructureKind(kind: string): kind is StructureKindName {
 export function snapToGrid(v: number): number {
   return Math.round(v / STRUCTURE_GRID_SNAP) * STRUCTURE_GRID_SNAP;
 }
+
+/** Maximum fraction of cost refunded when recycling a structure at full HP.
+ *  Scales linearly down to 0% at 0 HP. */
+export const STRUCTURE_RECYCLE_MAX_REFUND = 0.75;
+
+/** Credits returned when recycling a structure of `kind` at the given HP
+ *  fraction (hp / maxHp). Floored to keep the schema integral. */
+export function structureRecycleRefund(cost: number, hpFraction: number): number {
+  const f = hpFraction < 0 ? 0 : hpFraction > 1 ? 1 : hpFraction;
+  return Math.floor(cost * STRUCTURE_RECYCLE_MAX_REFUND * f);
+}

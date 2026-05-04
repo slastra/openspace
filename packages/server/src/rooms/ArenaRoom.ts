@@ -11,6 +11,8 @@ import {
   Asteroid,
   BuildStructureMessage,
   CREDITS_PER_ASTEROID_HP,
+  RecycleStructureMessage,
+  structureRecycleRefund,
   PLAYER_COLORS,
   PLAYER_CONTACT_RADIUS,
   PLAYER_MAX_HP,
@@ -138,6 +140,26 @@ export class ArenaRoom extends Room<ArenaState> {
       player.credits -= meta.cost;
       this.spawnStructure(client.sessionId, payload.kind, sx, sy, player.color);
       player.supplyCap += meta.supplyContribution;
+    });
+
+    this.onMessage<RecycleStructureMessage>("recycle-structure", (client, payload) => {
+      if (!payload || typeof payload.id !== "string") return;
+      const player = this.state.players.get(client.sessionId);
+      if (!player || player.hp <= 0) return;
+      const structure = this.state.structures.get(payload.id);
+      if (!structure || structure.ownerId !== client.sessionId) return;
+      const meta = STRUCTURE_KIND_META[structure.kind];
+      if (!meta) return;
+      const refund = structureRecycleRefund(
+        meta.cost,
+        structure.maxHp > 0 ? structure.hp / structure.maxHp : 0,
+      );
+      player.credits += refund;
+      player.supplyCap = Math.max(0, player.supplyCap - meta.supplyContribution);
+      const ref = this.bodyRefs.get(payload.id);
+      if (ref) removeCombatantBody(this.physics, ref.body, ref.colliderHandle);
+      this.bodyRefs.delete(payload.id);
+      this.state.structures.delete(payload.id);
     });
 
     this.onMessage("respawn", (client) => {

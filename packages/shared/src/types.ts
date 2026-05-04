@@ -14,3 +14,8 @@ export interface BuildStructureMessage {
   x: number;
   y: number;
 }
+
+export interface RecycleStructureMessage {
+  /** Schema id of the structure being recycled. Server validates ownership. */
+  id: string;
+}

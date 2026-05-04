@@ -54,6 +54,9 @@ export function startGame({ renderer, input, net }: GameDeps) {
   let local: LocalPlayer | null = null;
   /** Active build mode: structure kind name to place on next click, or null. */
   let placing: StructureKindName | null = null;
+  /** True while the player is in recycle mode (X). Click an owned structure
+   *  to reclaim it for a partial refund. Esc / right-click cancels. */
+  let recycling = false;
 
   // Effects layer lives in world space (above the entities) so explosions
   // and spawn pulses pan with the camera.
@@ -134,26 +137,41 @@ export function startGame({ renderer, input, net }: GameDeps) {
   });
   input.onKeyTap("KeyQ", () => {
     placing = placing === "supply" ? null : "supply";
+    if (placing) recycling = false;
     placementGhost.container.visible = placing !== null;
   });
   input.onKeyTap("KeyW", () => {
     placing = placing === "turret" ? null : "turret";
+    if (placing) recycling = false;
     placementGhost.container.visible = placing !== null;
   });
-  const cancelPlacement = () => {
+  input.onKeyTap("KeyX", () => {
+    recycling = !recycling;
+    if (recycling) {
+      placing = null;
+      placementGhost.container.visible = false;
+    }
+  });
+  const cancelModes = () => {
     placing = null;
     placementGhost.container.visible = false;
+    recycling = false;
   };
-  input.onKeyTap("Escape", cancelPlacement);
-  input.onRightClick(cancelPlacement);
+  input.onKeyTap("Escape", cancelModes);
+  input.onRightClick(cancelModes);
   input.onClick((sx, sy) => {
-    if (!placing) return;
     const world = renderer.camera.screenToWorld(sx, sy);
+    if (recycling) {
+      const target = pickOwnedStructure(world.x, world.y, structures, net.sessionId);
+      if (target) net.recycleStructure(target.id);
+      return;
+    }
+    if (!placing) return;
     const snapX = snapToGrid(world.x);
     const snapY = snapToGrid(world.y);
     if (!canPlace(placing, snapX, snapY, local, remotes, structures)) return;
     net.buildStructure(placing, world.x, world.y);
-    cancelPlacement();
+    cancelModes();
   });
 
   net.setHandlers({
@@ -472,6 +490,20 @@ export function startGame({ renderer, input, net }: GameDeps) {
       placementGhost.setValid(canPlace(placing, sx, sy, local, remotes, structures));
     }
 
+    // Recycle-mode visuals: pulse owned structures to make them obvious targets.
+    // Pulse uses a sin wave so it's a soft strobe rather than a hard flash.
+    if (recycling) {
+      const pulse = 0.55 + 0.35 * Math.sin(now / 140);
+      for (const s of structures.values()) {
+        s.view.container.alpha = s.ownerId === net.sessionId ? pulse : 0.35;
+      }
+    } else {
+      // Restore default alpha on exit. Cheap to set every frame; only matters
+      // for one frame after the mode flips off.
+      for (const s of structures.values()) s.view.container.alpha = 1;
+    }
+    hud.modeHint = recycling ? "RECYCLE — click a structure to reclaim" : "";
+
     pushHudUpdates(units, structures, local, net.sessionId, placing);
     pushLeaderboard(units, local, remotes, net.sessionId);
     hud.isDead = local !== null && local.hp <= 0;
@@ -638,6 +670,27 @@ function* worldObstacles(
       radius: meta.halfExtent,
     };
   }
+}
+
+/** Find the owned structure whose footprint contains (x, y). Used for the
+ *  recycle-mode click — picks any structure (regardless of HP) so the
+ *  player can also reclaim partially-damaged ones. Returns the first match;
+ *  structures don't overlap so there's at most one. */
+function pickOwnedStructure(
+  x: number,
+  y: number,
+  structures: Map<string, Structure>,
+  ownerId: string,
+): Structure | null {
+  for (const s of structures.values()) {
+    if (s.ownerId !== ownerId) continue;
+    const meta = STRUCTURE_KIND_META[s.kind];
+    if (!meta) continue;
+    const dx = s.view.container.x - x;
+    const dy = s.view.container.y - y;
+    if (dx * dx + dy * dy <= meta.halfExtent * meta.halfExtent) return s;
+  }
+  return null;
 }
 
 function pushBounded(arr: number[], v: number, max: number) {

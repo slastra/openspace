@@ -4,6 +4,7 @@ import {
   ArenaState,
   Asteroid,
   BuildStructureMessage,
+  RecycleStructureMessage,
   Player,
   PlayerInput,
   Projectile,
@@ -149,6 +150,9 @@ export interface NetClient {
   send(input: PlayerInput): void;
   spawnUnit(kind?: string): void;
   buildStructure(kind: string, x: number, y: number): void;
+  /** Reclaim an owned structure. Server validates ownership and refunds
+   *  credits scaled by the structure's current HP fraction. */
+  recycleStructure(id: string): void;
   /** Ask the server to respawn the local player. No-op server-side if alive. */
   respawn(): void;
   /** Drop every owned unit's chase target — they all return to formation. */
@@ -271,6 +275,10 @@ export async function connectToArena(opts: ConnectOptions = {}): Promise<NetClie
     buildStructure(kind, x, y) {
       const msg: BuildStructureMessage = { kind, x, y };
       room.send("build-structure", msg);
+    },
+    recycleStructure(id) {
+      const msg: RecycleStructureMessage = { id };
+      room.send("recycle-structure", msg);
     },
     respawn() {
       room.send("respawn");

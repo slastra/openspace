@@ -32,6 +32,8 @@ class HudState {
 
   /** Disconnect / error notice text. Empty by default. */
   status = $state("");
+  /** Transient-mode hint (e.g. "RECYCLE — click an owned structure"). */
+  modeHint = $state("");
 
   /** Sorted leaderboard rows, replaced wholesale each frame. */
   players = $state<LeaderboardEntry[]>([]);
