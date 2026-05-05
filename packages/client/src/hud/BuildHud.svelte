@@ -10,6 +10,7 @@
   const STRUCTURE_CARDS = [
     { kind: "supply", label: "Supply", hotkey: "Q" },
     { kind: "turret", label: "Turret", hotkey: "W" },
+    { kind: "wall", label: "Wall", hotkey: "E" },
   ];
   const UNIT_CARDS = [
     { kind: "rammer", label: "Rammer", hotkey: "A" },

@@ -1,5 +1,5 @@
 import { Container, Graphics } from "pixi.js";
-import { STRUCTURE_GRID_SNAP } from "@openspace/shared";
+import { STRUCTURE_GRID_SNAP, STRUCTURE_KIND_META } from "@openspace/shared";
 import { lighten, parseHexColor } from "./colors.js";
 
 export interface StructureView {
@@ -32,9 +32,17 @@ export function createStructureView(
   const bars = opts.bars !== false;
   const container = new Container();
   let setRotation: (r: number) => void = () => {};
+  let visualSize = SIZE;
   switch (kind) {
     case "turret": {
       setRotation = buildTurret(container, color);
+      break;
+    }
+    case "wall": {
+      // Wall visual matches its actual collider footprint (halfExtent * 2)
+      // so adjacent walls visually touch the way they physically do.
+      visualSize = (STRUCTURE_KIND_META.wall?.halfExtent ?? 50) * 2;
+      buildWall(container, color, visualSize);
       break;
     }
     case "supply":
@@ -44,8 +52,8 @@ export function createStructureView(
   }
   let hpBar: BarHandle | null = null;
   if (bars) {
-    hpBar = createStructureHpBar(SIZE * 0.85);
-    hpBar.container.position.set(0, -SIZE / 2 - 8);
+    hpBar = createStructureHpBar(visualSize * 0.85);
+    hpBar.container.position.set(0, -visualSize / 2 - 8);
     container.addChild(hpBar.container);
   }
   return {
@@ -149,6 +157,44 @@ function buildTurret(container: Container, color: string): (r: number) => void {
   };
 }
 
+/**
+ * Wall — armored plate that fills its grid cell. Reads as defense rather
+ * than economy or weapon: thick frame, diagonal hatch lines, no internal
+ * detail or barrel. Square, no rotation. Drawn at full halfExtent×2 so
+ * adjacent walls visually touch the way they physically do.
+ */
+function buildWall(container: Container, color: string, size: number) {
+  const tint = parseHexColor(color);
+  const half = size / 2;
+  const frame = new Graphics();
+  frame
+    .rect(-half, -half, size, size)
+    .fill({ color: 0x1a1f2e, alpha: 0.92 })
+    .stroke({ color: lighten(tint, 0.35), width: 2, alpha: 0.95 });
+  container.addChild(frame);
+
+  // Inner armor inset, tinted in the owner's color so allegiance reads.
+  const inner = new Graphics();
+  const inset = half * 0.65;
+  inner
+    .rect(-inset, -inset, inset * 2, inset * 2)
+    .fill({ color: tint, alpha: 0.18 })
+    .stroke({ color: lighten(tint, 0.5), width: 1, alpha: 0.85 });
+  container.addChild(inner);
+
+  // Diagonal hatch lines for the "armor plating" read.
+  const hatch = new Graphics();
+  const hatchColor = lighten(tint, 0.45);
+  for (let i = -2; i <= 2; i++) {
+    const o = i * (inset * 0.55);
+    hatch
+      .moveTo(-inset + o, inset)
+      .lineTo(inset + o, -inset)
+      .stroke({ color: hatchColor, width: 0.75, alpha: 0.45 });
+  }
+  container.addChild(hatch);
+}
+
 function buildSupply(container: Container, color: string) {
   const tint = parseHexColor(color);
   const frame = new Graphics();
@@ -182,23 +228,29 @@ function buildSupply(container: Container, color: string) {
  * Translucent ghost rendered at the snapped grid cell while the player is
  * in placement mode. `valid` toggles between affordable+legal (green-ish)
  * and rejected (red-ish) tints so the player gets immediate feedback.
+ * `setKind` resizes the ghost to match the chosen structure's footprint
+ * so a wall ghost (100u) doesn't visually under-represent the actual
+ * placement.
  */
 export function createPlacementGhost(): {
   container: Container;
   setPos: (x: number, y: number) => void;
   setValid: (valid: boolean) => void;
+  setKind: (kind: string) => void;
 } {
   const container = new Container();
   const g = new Graphics();
   container.addChild(g);
   let lastValid: boolean | null = null;
+  let lastKind = "";
+  let size = SIZE;
 
   const draw = (valid: boolean) => {
     g.clear();
-    const half = SIZE / 2;
+    const half = size / 2;
     const color = valid ? 0x4ade80 : 0xf87171;
     g
-      .roundRect(-half, -half, SIZE, SIZE, 6)
+      .roundRect(-half, -half, size, size, 6)
       .fill({ color, alpha: 0.15 })
       .stroke({ color, width: 1.5, alpha: 0.85 });
     // Crosshair marker for the snap center.
@@ -217,6 +269,20 @@ export function createPlacementGhost(): {
       if (valid === lastValid) return;
       lastValid = valid;
       draw(valid);
+    },
+    setKind(kind) {
+      if (kind === lastKind) return;
+      lastKind = kind;
+      // Kinds with an explicit cuboid footprint draw at full halfExtent×2;
+      // ball-collider kinds keep the legacy SIZE so the existing supply/
+      // turret ghosts look unchanged.
+      const meta = STRUCTURE_KIND_META[kind];
+      size =
+        meta?.colliderShape === "cuboid" && meta.halfExtent
+          ? meta.halfExtent * 2
+          : SIZE;
+      // Force redraw at new size; preserve current valid color.
+      draw(lastValid ?? true);
     },
   };
 }

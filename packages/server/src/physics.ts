@@ -88,22 +88,34 @@ export function addCombatantBody(
 }
 
 /**
- * Static ball collider for a player-built structure. Visual is still a square
- * (see client render), but the collider matches the asteroid model — ball-vs-
- * ball contacts produce smoother solver behavior than ball-vs-cuboid (no
- * normal flip at corners) and keep the local-player predictor in lockstep
- * with the server (predictor approximates obstacles as circles too).
+ * Static collider for a player-built structure. Default ball shape matches
+ * the asteroid model — ball-vs-ball contacts produce smoother solver
+ * behavior than ball-vs-cuboid (no normal flip at corners) and keep the
+ * local-player predictor in lockstep with the server. Wall structures opt
+ * into "cuboid" so adjacent placements form a continuous barrier (ball
+ * walls on the 100u grid leave diagonal gaps a unit can slip through).
  *
- * `radius` should typically be the structure's `contactRadius` so projectile
- * hit checks and physical collision agree.
+ * `radius` is the structure's `halfExtent` — for a ball it's the radius,
+ * for a cuboid it's the (square) half-edge length.
  */
 export function addStructureBody(
   phys: PhysicsWorld,
-  opts: { entityId: string; x: number; y: number; radius: number },
+  opts: {
+    entityId: string;
+    x: number;
+    y: number;
+    radius: number;
+    shape?: "ball" | "cuboid";
+  },
 ): { body: RAPIER.RigidBody; colliderHandle: number } {
   const bodyDesc = RAPIER.RigidBodyDesc.fixed().setTranslation(opts.x, opts.y);
   const body = phys.world.createRigidBody(bodyDesc);
-  const colliderDesc = RAPIER.ColliderDesc.ball(opts.radius)
+  const shape = opts.shape ?? "ball";
+  const colliderDesc =
+    shape === "cuboid"
+      ? RAPIER.ColliderDesc.cuboid(opts.radius, opts.radius)
+      : RAPIER.ColliderDesc.ball(opts.radius);
+  colliderDesc
     .setRestitution(0)
     .setFriction(0.0)
     .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);

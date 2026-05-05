@@ -598,6 +598,7 @@ export class ArenaRoom extends Room<ArenaState> {
       x,
       y,
       radius: meta.halfExtent,
+      shape: meta.colliderShape ?? "ball",
     });
     this.bodyRefs.set(s.id, ref);
   }

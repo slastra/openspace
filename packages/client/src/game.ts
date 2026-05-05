@@ -155,12 +155,26 @@ export function startGame({ renderer, input, net }: GameDeps) {
   });
   input.onKeyTap("KeyQ", () => {
     placing = placing === "supply" ? null : "supply";
-    if (placing) recycling = false;
+    if (placing) {
+      recycling = false;
+      placementGhost.setKind(placing);
+    }
     placementGhost.container.visible = placing !== null;
   });
   input.onKeyTap("KeyW", () => {
     placing = placing === "turret" ? null : "turret";
-    if (placing) recycling = false;
+    if (placing) {
+      recycling = false;
+      placementGhost.setKind(placing);
+    }
+    placementGhost.container.visible = placing !== null;
+  });
+  input.onKeyTap("KeyE", () => {
+    placing = placing === "wall" ? null : "wall";
+    if (placing) {
+      recycling = false;
+      placementGhost.setKind(placing);
+    }
     placementGhost.container.visible = placing !== null;
   });
   input.onKeyTap("KeyX", () => {

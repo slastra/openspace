@@ -22,6 +22,12 @@ export interface StructureKindMeta {
   abilityDamage?: number;
   /** Cooldown between shots in seconds (combat structures only). */
   abilityCooldownSeconds?: number;
+  /** Physics collider shape. Defaults to "ball" — existing structures keep
+   *  their circular hitbox. "cuboid" gives a full square footprint, which
+   *  is what walls need so adjacent placements form a continuous barrier
+   *  (ball colliders on the 100u grid leave diagonal gaps a unit can slip
+   *  through). */
+  colliderShape?: "ball" | "cuboid";
 }
 
 export const SUPPLY: StructureKindMeta = {
@@ -35,20 +41,41 @@ export const SUPPLY: StructureKindMeta = {
  * Turret — stationary defensive structure. Acquires the nearest enemy
  * combatant within `abilityRange` and pumps a hitscan laser on cooldown.
  * Same beam visual as the LASER unit; rotates its barrel to face the target.
+ *
+ * Tuned to comfortably handle 1–2 gunners on its own and contest 3 (a
+ * lone gunner has 14.55 DPS at hp=35; turret now does 24 DPS at hp=80,
+ * outranges gunner by 40u). Anchor for a wall-ringed defensive position.
  */
 export const TURRET: StructureKindMeta = {
   cost: 18,
-  hp: 60,
+  hp: 80,
   halfExtent: 28,
   supplyContribution: 0,
-  abilityRange: 380,
-  abilityDamage: 10,
-  abilityCooldownSeconds: 0.6,
+  abilityRange: 440,
+  abilityDamage: 12,
+  abilityCooldownSeconds: 0.5,
+};
+
+/**
+ * Wall — pure defensive obstacle. No firing, no supply, no shield projection
+ * of its own (the existing SHIELDER unit auto-buffs it like any other
+ * Combatant). Cuboid collider fully fills its 100u grid cell so adjacent
+ * walls touch face-to-face and form a continuous barrier. Cheap enough to
+ * ring a supply with 8 of them; tough enough to need ~6 rammer pops to
+ * break a single section.
+ */
+export const WALL: StructureKindMeta = {
+  cost: 6,
+  hp: 140,
+  halfExtent: 50,
+  supplyContribution: 0,
+  colliderShape: "cuboid",
 };
 
 export const STRUCTURE_KIND_META: Record<string, StructureKindMeta> = {
   supply: SUPPLY,
   turret: TURRET,
+  wall: WALL,
 };
 
 export type StructureKindName = keyof typeof STRUCTURE_KIND_META;
