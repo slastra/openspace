@@ -377,7 +377,11 @@ function runUnitAI(state: ArenaState, bodyRefs: Map<string, BodyRef>, ctx: SimCo
       target =
         lookupCombatant(state, unit.targetId) ??
         ((state.asteroids.get(unit.targetId) as unknown as Combatant) || null);
-      if (!target || target.hp <= 0) {
+      // Force a re-acquire if the held target is dead OR a wreckage orphan
+      // (neutral). Without the isNeutral check, gunners kept firing at
+      // ghost units after their owner died — projectiles correctly skip
+      // neutrals so the shots passed through and the gunner never moved on.
+      if (!target || target.hp <= 0 || isNeutral(target)) {
         target = behavior.acquireTarget(unit, state, meta, ctx.grids);
       }
     }

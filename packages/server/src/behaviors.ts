@@ -6,6 +6,7 @@ import {
   UNIT_KIND_META,
   Unit,
   UnitKindMeta,
+  isNeutral,
   lookupCombatant,
   stationTarget,
   teamOf,
@@ -53,7 +54,18 @@ export function defaultAcquireTarget(
 ): Combatant | null {
   if (unit.targetId) {
     const t = state.players.get(unit.targetId) ?? state.units.get(unit.targetId);
-    if (t && t.hp > 0 && Math.hypot(t.x - unit.x, t.y - unit.y) <= meta.releaseRadius) {
+    // isNeutral guard: when the held target was a unit whose owner died,
+    // it becomes a wreckage orphan (neutral). Projectiles pass through
+    // neutrals (see stepProjectiles), so without this the shooter would
+    // sit there firing at a ghost forever — recall fixed it manually by
+    // clearing targetId and forcing re-acquire through the grid (which
+    // already excludes neutrals).
+    if (
+      t &&
+      t.hp > 0 &&
+      !isNeutral(t) &&
+      Math.hypot(t.x - unit.x, t.y - unit.y) <= meta.releaseRadius
+    ) {
       return t;
     }
   }
