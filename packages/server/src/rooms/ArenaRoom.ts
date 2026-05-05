@@ -5,6 +5,7 @@ import {
   AOI_HYSTERESIS_U,
   AOI_RADIUS_U,
   ASTEROID_COUNT,
+  BASE_CLAIM_RADIUS_U,
   ASTEROID_MIN_SPACING,
   ASTEROID_RESPAWN_DELAY_MS,
   ASTEROID_SPAWN_MARGIN,
@@ -132,10 +133,16 @@ export class ArenaRoom extends Room<ArenaState> {
       const now = performance.now();
       const last = this.lastUnitSpawnAt.get(client.sessionId) ?? 0;
       if (now - last < UNIT_SPAWN_COOLDOWN_MS) return;
+      // Base-gated production: a player must own a live base before they
+      // can spawn any unit. No base = no production. Losing your base is
+      // a real setback — existing units stay, but you can't reinforce
+      // them until you place a fresh base.
+      const spawn = this.nearestOwnedBase(client.sessionId, player.x, player.y);
+      if (!spawn) return;
       this.lastUnitSpawnAt.set(client.sessionId, now);
       player.credits -= meta.cost;
       player.supplyUsed += meta.supplyCost;
-      this.spawnUnit(client.sessionId, kind, player.x, player.y);
+      this.spawnUnit(client.sessionId, kind, spawn.x, spawn.y);
     });
 
     this.onMessage<BuildStructureMessage>("build-structure", (client, payload) => {
@@ -148,13 +155,19 @@ export class ArenaRoom extends Room<ArenaState> {
       const sx = snapToGrid(payload.x);
       const sy = snapToGrid(payload.y);
       if (sx <= 0 || sx >= WORLD_WIDTH || sy <= 0 || sy >= WORLD_HEIGHT) return;
-      // Hard per-player structure cap + reject stacking on the same cell.
+      // Hard per-player structure cap + per-kind cap + reject stacking on
+      // the same cell.
       let ownedStructures = 0;
+      let ownedOfKind = 0;
       for (const s of this.state.structures.values()) {
         if (s.x === sx && s.y === sy) return;
-        if (s.ownerId === client.sessionId) ownedStructures++;
+        if (s.ownerId === client.sessionId) {
+          ownedStructures++;
+          if (s.kind === payload.kind) ownedOfKind++;
+        }
       }
       if (ownedStructures >= MAX_STRUCTURES_PER_PLAYER) return;
+      if (meta.maxPerPlayer !== undefined && ownedOfKind >= meta.maxPerPlayer) return;
       // Reject placement that would trap a live player ship inside the
       // structure's collider — Rapier can't push a body out of a fixed body
       // it's spawned inside, so the ship would jitter against the wall every
@@ -166,6 +179,18 @@ export class ArenaRoom extends Room<ArenaState> {
         const dx = p.x - sx;
         const dy = p.y - sy;
         if (dx * dx + dy * dy < playerReachSq) return;
+      }
+      // Base territorial claim: enemy bases within BASE_CLAIM_RADIUS_U
+      // block any new placement here (your own base doesn't block — you
+      // build freely inside your own territory). Existing structures
+      // aren't affected by a fresh claim — only new placements are gated.
+      const claimSq = BASE_CLAIM_RADIUS_U * BASE_CLAIM_RADIUS_U;
+      for (const s of this.state.structures.values()) {
+        if (s.kind !== "base") continue;
+        if (s.ownerId === client.sessionId) continue;
+        const dx = s.x - sx;
+        const dy = s.y - sy;
+        if (dx * dx + dy * dy < claimSq) return;
       }
       player.credits -= meta.cost;
       this.spawnStructure(client.sessionId, payload.kind, sx, sy, player.color);
@@ -601,6 +626,33 @@ export class ArenaRoom extends Room<ArenaState> {
       shape: meta.colliderShape ?? "ball",
     });
     this.bodyRefs.set(s.id, ref);
+  }
+
+  /**
+   * Lookup for the spawn-at-base rule. Bases are capped at 1 per player
+   * so this is at most a single match, but the loop tolerates future
+   * relaxation of that cap.
+   */
+  private nearestOwnedBase(
+    ownerId: string,
+    x: number,
+    y: number,
+  ): { x: number; y: number } | null {
+    let best: { x: number; y: number } | null = null;
+    let bestD2 = Infinity;
+    for (const s of this.state.structures.values()) {
+      if (s.kind !== "base") continue;
+      if (s.ownerId !== ownerId) continue;
+      if (s.hp <= 0) continue;
+      const dx = s.x - x;
+      const dy = s.y - y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        best = { x: s.x, y: s.y };
+      }
+    }
+    return best;
   }
 
   /**

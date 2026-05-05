@@ -28,6 +28,12 @@ export interface StructureKindMeta {
    *  (ball colliders on the 100u grid leave diagonal gaps a unit can slip
    *  through). */
   colliderShape?: "ball" | "cuboid";
+  /** Per-player placement cap for this kind. Omitted = no per-kind limit
+   *  (only the global MAX_STRUCTURES_PER_PLAYER applies). Used by strategic
+   *  structures that should remain singular (e.g. the base — there's
+   *  exactly one home, multiples would let one player dominate too much
+   *  map via the claim radius and make spawn-at-base ambiguous). */
+  maxPerPlayer?: number;
 }
 
 export const SUPPLY: StructureKindMeta = {
@@ -72,7 +78,29 @@ export const WALL: StructureKindMeta = {
   colliderShape: "cuboid",
 };
 
+/**
+ * Base — every player's home command structure. Three roles:
+ *  1. Production gate. Without a live owned base, the player cannot spawn
+ *     any units. Unit costs only apply on top of having a base.
+ *  2. Spawn anchor. Units spawn at the base; the player respawns there on
+ *     death (with a small jitter) so the base is your literal home.
+ *  3. Territorial claim — enemies can't place any new structure within
+ *     `BASE_CLAIM_RADIUS_U` of your base.
+ *
+ * Free + capped to 1 per player. The cost isn't credits, it's the
+ * placement decision: where you drop your base defines your home and
+ * everything else (walls, turrets, supplies) clusters around it.
+ */
+export const BASE: StructureKindMeta = {
+  cost: 0,
+  hp: 100,
+  halfExtent: 32,
+  supplyContribution: 0,
+  maxPerPlayer: 1,
+};
+
 export const STRUCTURE_KIND_META: Record<string, StructureKindMeta> = {
+  base: BASE,
   supply: SUPPLY,
   turret: TURRET,
   wall: WALL,

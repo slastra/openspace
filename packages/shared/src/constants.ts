@@ -23,8 +23,11 @@ export const PLAYER_FULL_SPEED_DIST = 180;
 export const UNIT_SIZE = 18;
 /** Smallest interval (ms) between unit-spawn requests honored per player. */
 export const UNIT_SPAWN_COOLDOWN_MS = 250;
-/** Credits a fresh player joins with — seeds the economy so spawning isn't gated on first kill. */
-export const STARTING_CREDITS = 10;
+/** Credits a fresh player joins with. The base structure that gates all
+ *  unit production is free, so this seeds the very first miner / wall
+ *  buy without forcing the player to mine with the ship before they can
+ *  do anything. */
+export const STARTING_CREDITS = 20;
 /** Supply cap a player joins with — enough for a starter swarm before any structures. */
 export const STARTING_SUPPLY_CAP = 4;
 /** All structures snap to this world-grid spacing on placement. Reuses the visual GRID_SPACING. */
@@ -91,6 +94,13 @@ export const AOI_RADIUS_U = 1500;
  *  an entity stays visible until it passes RADIUS + this distance. Kills
  *  in/out flicker for entities skating along the boundary. */
 export const AOI_HYSTERESIS_U = 300;
+
+/** Radius (world units) of the territorial claim projected by an owned
+ *  base. Enemy players cannot place ANY structure within this radius of
+ *  your live base; you can build freely inside your own claim. Existing
+ *  enemy structures already in the radius when a base is planted are
+ *  unaffected — claim only blocks new placements. */
+export const BASE_CLAIM_RADIUS_U = 600;
 
 export const PLAYER_COLORS = [
   "#4ade80",

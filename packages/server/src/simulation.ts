@@ -1320,8 +1320,22 @@ function cullAndRespawn(
     if (!pendingRespawnSet.has(id)) continue;
     pendingRespawnSet.delete(id);
 
-    const sx = WORLD_WIDTH / 2 + (Math.random() - 0.5) * 600;
-    const sy = WORLD_HEIGHT / 2 + (Math.random() - 0.5) * 600;
+    // Respawn at owned base if the player still has one — base is the
+    // player's literal home. Falls back to world center when the base
+    // has been lost (or first-spawn before any base is built).
+    let baseAnchor: { x: number; y: number } | null = null;
+    for (const s of state.structures.values()) {
+      if (s.kind !== "base") continue;
+      if (s.ownerId !== id) continue;
+      if (s.hp <= 0) continue;
+      baseAnchor = { x: s.x, y: s.y };
+      break;
+    }
+    const baseX = baseAnchor?.x ?? WORLD_WIDTH / 2;
+    const baseY = baseAnchor?.y ?? WORLD_HEIGHT / 2;
+    const jitter = baseAnchor ? 100 : 600;
+    const sx = baseX + (Math.random() - 0.5) * jitter;
+    const sy = baseY + (Math.random() - 0.5) * jitter;
     ref.body.setTranslation({ x: sx, y: sy }, true);
     ref.body.setLinvel({ x: 0, y: 0 }, true);
     player.x = sx;

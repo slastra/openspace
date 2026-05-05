@@ -1,4 +1,5 @@
 import {
+  BASE_CLAIM_RADIUS_U,
   DASH_SPEED_MULTIPLIER,
   PLAYER_CONTACT_RADIUS,
   STRUCTURE_KIND_META,
@@ -154,7 +155,7 @@ export function startGame({ renderer, input, net }: GameDeps) {
     net.dashEnd();
   });
   input.onKeyTap("KeyQ", () => {
-    placing = placing === "supply" ? null : "supply";
+    placing = placing === "base" ? null : "base";
     if (placing) {
       recycling = false;
       placementGhost.setKind(placing);
@@ -162,7 +163,7 @@ export function startGame({ renderer, input, net }: GameDeps) {
     placementGhost.container.visible = placing !== null;
   });
   input.onKeyTap("KeyW", () => {
-    placing = placing === "turret" ? null : "turret";
+    placing = placing === "supply" ? null : "supply";
     if (placing) {
       recycling = false;
       placementGhost.setKind(placing);
@@ -170,6 +171,14 @@ export function startGame({ renderer, input, net }: GameDeps) {
     placementGhost.container.visible = placing !== null;
   });
   input.onKeyTap("KeyE", () => {
+    placing = placing === "turret" ? null : "turret";
+    if (placing) {
+      recycling = false;
+      placementGhost.setKind(placing);
+    }
+    placementGhost.container.visible = placing !== null;
+  });
+  input.onKeyTap("KeyR", () => {
     placing = placing === "wall" ? null : "wall";
     if (placing) {
       recycling = false;
@@ -204,7 +213,7 @@ export function startGame({ renderer, input, net }: GameDeps) {
     if (!placing) return;
     const snapX = snapToGrid(world.x);
     const snapY = snapToGrid(world.y);
-    if (!canPlace(placing, snapX, snapY, local, remotes, structures)) return;
+    if (!canPlace(placing, snapX, snapY, local, remotes, structures, net.sessionId)) return;
     net.buildStructure(placing, world.x, world.y);
     cancelModes();
   });
@@ -552,7 +561,7 @@ export function startGame({ renderer, input, net }: GameDeps) {
       const sx = snapToGrid(cursor.x);
       const sy = snapToGrid(cursor.y);
       placementGhost.setPos(sx, sy);
-      placementGhost.setValid(canPlace(placing, sx, sy, local, remotes, structures));
+      placementGhost.setValid(canPlace(placing, sx, sy, local, remotes, structures, net.sessionId));
     }
 
     // Recycle-mode visuals: pulse owned structures to make them obvious targets.
@@ -613,13 +622,24 @@ function pushHudUpdates(
   const credits = local?.credits ?? 0;
   const supplyUsed = local?.supplyUsed ?? 0;
   const supplyCap = local?.supplyCap ?? 0;
+  // Base-gated production: without an owned base, no unit can be spawned
+  // regardless of credits/supply. Mirrors the server gate so the HUD
+  // greys out unit cards that would be rejected on submit.
+  const hasBase = (structureCounts.base ?? 0) > 0;
   const affordable: Record<string, boolean> = {};
   for (const [kind, meta] of Object.entries(UNIT_KIND_META)) {
-    // Need both: credits to pay the bill AND a supply slot to fit the unit.
-    affordable[kind] = credits >= meta.cost && supplyUsed + meta.supplyCost <= supplyCap;
+    affordable[kind] =
+      hasBase &&
+      credits >= meta.cost &&
+      supplyUsed + meta.supplyCost <= supplyCap;
   }
   for (const [kind, meta] of Object.entries(STRUCTURE_KIND_META)) {
-    affordable[kind] = credits >= meta.cost;
+    // Per-kind cap (e.g. base capped at 1) — a structure at its limit
+    // greys out even if the player has the credits.
+    const atLimit =
+      meta.maxPerPlayer !== undefined &&
+      (structureCounts[kind] ?? 0) >= meta.maxPerPlayer;
+    affordable[kind] = !atLimit && credits >= meta.cost;
   }
 
   hud.unitCounts = ownedByKind;
@@ -657,10 +677,20 @@ function canPlace(
   local: LocalPlayer | null,
   remotes: Map<string, RemotePlayer>,
   structures: Map<string, Structure>,
+  localSessionId: string,
 ): boolean {
   const meta = STRUCTURE_KIND_META[kind];
   if (!meta) return false;
   if (local && local.credits < meta.cost) return false;
+  // Per-kind cap check (mirrors server). Walk own structures of the chosen
+  // kind and reject if at the limit.
+  if (meta.maxPerPlayer !== undefined) {
+    let ownedOfKind = 0;
+    for (const s of structures.values()) {
+      if (s.ownerId === localSessionId && s.kind === kind) ownedOfKind++;
+    }
+    if (ownedOfKind >= meta.maxPerPlayer) return false;
+  }
   for (const s of structures.values()) {
     if (s.view.container.x === snapX && s.view.container.y === snapY) return false;
   }
@@ -676,6 +706,17 @@ function canPlace(
     const dx = r.renderedX - snapX;
     const dy = r.renderedY - snapY;
     if (dx * dx + dy * dy < reachSq) return false;
+  }
+  // Mirror server base-claim check so the placement ghost reads red over
+  // enemy claimed territory before the click ever fires. Own base doesn't
+  // block — you build freely inside your own claim.
+  const claimSq = BASE_CLAIM_RADIUS_U * BASE_CLAIM_RADIUS_U;
+  for (const s of structures.values()) {
+    if (s.kind !== "base") continue;
+    if (s.ownerId === localSessionId) continue;
+    const dx = s.view.container.x - snapX;
+    const dy = s.view.container.y - snapY;
+    if (dx * dx + dy * dy < claimSq) return false;
   }
   return true;
 }

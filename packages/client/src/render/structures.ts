@@ -45,6 +45,10 @@ export function createStructureView(
       buildWall(container, color, visualSize);
       break;
     }
+    case "base": {
+      buildBase(container, color);
+      break;
+    }
     case "supply":
     default:
       buildSupply(container, color);
@@ -201,6 +205,83 @@ function buildWall(container: Container, color: string, size: number) {
       .stroke({ color: hatchColor, width: 0.75, alpha: 0.45 });
   }
   container.addChild(hatch);
+}
+
+/**
+ * Base — fortified command center. Reads heavier than a turret or supply:
+ * thick square hull with corner bastions and a glowing command core at
+ * the center. Distinct silhouette from turret (chamfered octagon with a
+ * barrel) and supply (crate stacks). No rotation.
+ */
+function buildBase(container: Container, color: string) {
+  const tint = parseHexColor(color);
+  const half = SIZE / 2;
+  const hullInset = half * 0.85;
+  const bastion = half * 0.28;
+
+  // Main hull — thick square base. Slightly inset from cell edge so the
+  // corner bastions read as separate structural elements.
+  const hull = new Graphics();
+  hull
+    .rect(-hullInset, -hullInset, hullInset * 2, hullInset * 2)
+    .fill({ color: 0x1a1f2e, alpha: 0.95 })
+    .stroke({ color: lighten(tint, 0.35), width: 2, alpha: 0.95 });
+  container.addChild(hull);
+
+  // Four corner bastions — small armored squares at each corner of the
+  // hull. Reads as fortifications / defense towers.
+  const corners = new Graphics();
+  const cornerOffsets: [number, number][] = [
+    [-hullInset, -hullInset],
+    [hullInset, -hullInset],
+    [-hullInset, hullInset],
+    [hullInset, hullInset],
+  ];
+  for (const [cx, cy] of cornerOffsets) {
+    corners
+      .rect(cx - bastion / 2, cy - bastion / 2, bastion, bastion)
+      .fill({ color: 0x10141c, alpha: 0.95 })
+      .stroke({ color: lighten(tint, 0.5), width: 1, alpha: 0.95 });
+  }
+  container.addChild(corners);
+
+  // Inner command deck — owner-tinted plate inside the hull.
+  const deck = new Graphics();
+  const deckSize = hullInset * 0.7;
+  deck
+    .rect(-deckSize, -deckSize, deckSize * 2, deckSize * 2)
+    .fill({ color: tint, alpha: 0.16 })
+    .stroke({ color: lighten(tint, 0.5), width: 1, alpha: 0.85 });
+  container.addChild(deck);
+
+  // Cross-hatch braces on the deck for the "command center" read —
+  // diagonal lines from corner to corner of the deck plate.
+  const braces = new Graphics();
+  const braceColor = lighten(tint, 0.45);
+  braces
+    .moveTo(-deckSize, -deckSize)
+    .lineTo(deckSize, deckSize)
+    .stroke({ color: braceColor, width: 0.75, alpha: 0.45 });
+  braces
+    .moveTo(-deckSize, deckSize)
+    .lineTo(deckSize, -deckSize)
+    .stroke({ color: braceColor, width: 0.75, alpha: 0.45 });
+  container.addChild(braces);
+
+  // Glowing command core at the center — bright owner-tinted dot with a
+  // white halo so it reads as "active" / "broadcasting."
+  const halo = new Graphics();
+  halo
+    .circle(0, 0, half * 0.22)
+    .fill({ color: lighten(tint, 0.6), alpha: 0.45 });
+  container.addChild(halo);
+
+  const core = new Graphics();
+  core
+    .circle(0, 0, half * 0.13)
+    .fill({ color: 0xffffff, alpha: 0.95 })
+    .stroke({ color: lighten(tint, 0.7), width: 1, alpha: 0.95 });
+  container.addChild(core);
 }
 
 function buildSupply(container: Container, color: string) {
