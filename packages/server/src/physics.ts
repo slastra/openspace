@@ -1,5 +1,22 @@
 import RAPIER from "@dimforge/rapier2d-compat";
-import { LINEAR_DAMPING, TICK_DT } from "@openspace/shared";
+import { LINEAR_DAMPING, MAX_PLAYERS_PER_ROOM, TICK_DT } from "@openspace/shared";
+
+// Rapier's InteractionGroups packs memberships+filter into a u32 (16 bits
+// each). We dedicate one bit per player slot for the wall passthrough
+// filter, so MAX_PLAYERS_PER_ROOM must stay ≤ 16. Throwing at module load
+// makes a future bump fail loudly instead of silently corrupting filters
+// (1 << ≥32 wraps to 1 in JS bitwise ops).
+if (MAX_PLAYERS_PER_ROOM > 16) {
+  throw new Error(
+    `MAX_PLAYERS_PER_ROOM=${MAX_PLAYERS_PER_ROOM} exceeds Rapier's 16-bit ` +
+      `InteractionGroups membership space — owner-passthrough collision ` +
+      `groups would silently overflow.`,
+  );
+}
+/** Mask covering every legal owner-bit (bits 0..MAX_PLAYERS_PER_ROOM-1).
+ *  Used everywhere we'd otherwise hardcode 0xFFFF, so the bit math stays
+ *  honest if the player cap ever changes. */
+const PLAYER_BITS_MASK = (1 << MAX_PLAYERS_PER_ROOM) - 1;
 
 let initPromise: Promise<void> | null = null;
 
@@ -81,20 +98,18 @@ function makeGroups(memberships: number, filter: number): number {
 }
 
 /** Default — collide with everything (and be collided by everything). */
-const GROUPS_DEFAULT = makeGroups(0xffff, 0xffff);
+const GROUPS_DEFAULT = makeGroups(PLAYER_BITS_MASK, PLAYER_BITS_MASK);
 
-/** Memberships = single owner bit, filter = all. The body collides with
- *  everything except walls whose filter excludes this owner bit. */
+/** Memberships = single owner bit, filter = all player bits. */
 function ownerMemberGroups(ownerBit: number): number {
-  return makeGroups(1 << ownerBit, 0xffff);
+  return makeGroups(1 << ownerBit, PLAYER_BITS_MASK);
 }
 
 /** Wall filter excludes its owner's bit so the owner's units / ship pass
  *  through. Non-owner dynamic bodies have other membership bits and are
- *  still blocked. Memberships stay full so this collider participates in
- *  every other collision (asteroids, enemy bodies, etc.). */
+ *  still blocked. */
 function wallOwnerFilterGroups(ownerBit: number): number {
-  return makeGroups(0xffff, 0xffff & ~(1 << ownerBit));
+  return makeGroups(PLAYER_BITS_MASK, PLAYER_BITS_MASK & ~(1 << ownerBit));
 }
 
 /**
