@@ -48,9 +48,8 @@ export const SUPPLY: StructureKindMeta = {
  * combatant within `abilityRange` and pumps a hitscan laser on cooldown.
  * Same beam visual as the LASER unit; rotates its barrel to face the target.
  *
- * Tuned to comfortably handle 1–2 gunners on its own and contest 3 (a
- * lone gunner has 14.55 DPS at hp=35; turret now does 24 DPS at hp=80,
- * outranges gunner by 40u). Anchor for a wall-ringed defensive position.
+ * 96 DPS now (24 dmg × 4 shots/sec). Comfortably handles 4–5 gunners on
+ * its own and remains the anchor of a wall-ringed defensive position.
  */
 export const TURRET: StructureKindMeta = {
   cost: 18,
@@ -58,21 +57,21 @@ export const TURRET: StructureKindMeta = {
   halfExtent: 28,
   supplyContribution: 0,
   abilityRange: 440,
-  abilityDamage: 12,
-  abilityCooldownSeconds: 0.5,
+  abilityDamage: 24,
+  abilityCooldownSeconds: 0.25,
 };
 
 /**
  * Wall — pure defensive obstacle. No firing, no supply, no shield projection
  * of its own (the existing SHIELDER unit auto-buffs it like any other
  * Combatant). Cuboid collider fully fills its 100u grid cell so adjacent
- * walls touch face-to-face and form a continuous barrier. Cheap enough to
- * ring a supply with 8 of them; tough enough to need ~6 rammer pops to
- * break a single section.
+ * walls touch face-to-face and form a continuous barrier. Tough enough
+ * to take ~13 rammer pops to break a single section, so a wall ring is
+ * a real investment of enemy effort to crack.
  */
 export const WALL: StructureKindMeta = {
   cost: 6,
-  hp: 140,
+  hp: 280,
   halfExtent: 50,
   supplyContribution: 0,
   colliderShape: "cuboid",
