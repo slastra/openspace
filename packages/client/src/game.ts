@@ -471,6 +471,32 @@ export function startGame({ renderer, input, net }: GameDeps) {
     onError(code, message) {
       console.error("[room error]", code, message);
     },
+    onEvent(event) {
+      // Translate the wire event into a feed entry. The local-player
+      // highlight is computed here (NetClient handler is the only place
+      // we both have the event AND know the local sessionId).
+      if (event.kind === "kill") {
+        hud.pushFeedEntry({
+          kind: "kill",
+          killerName: event.killerName,
+          killerColor: event.killerColor,
+          victimName: event.victimName,
+          victimColor: event.victimColor,
+          involvesLocal:
+            event.killerId === net.sessionId ||
+            event.victimId === net.sessionId,
+        });
+      } else if (event.kind === "emote") {
+        hud.pushFeedEntry({
+          kind: "emote",
+          senderName: event.senderName,
+          senderColor: event.senderColor,
+          emote: event.emote,
+        });
+      } else if (event.kind === "base-attack") {
+        hud.pushFeedEntry({ kind: "base-attack" });
+      }
+    },
   });
 
   let lastFrame = performance.now();
@@ -592,6 +618,7 @@ export function startGame({ renderer, input, net }: GameDeps) {
     pushHudUpdates(localUnitCounts, localStructureCounts, localUnitTotal, local, placing);
     pushLeaderboard(net);
     hud.isDead = local !== null && local.hp <= 0;
+    hud.pruneFeed(now);
   });
 }
 

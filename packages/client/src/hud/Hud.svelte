@@ -5,6 +5,7 @@
   import RespawnOverlay from "./RespawnOverlay.svelte";
   import Status from "./Status.svelte";
   import DebugPanel from "./DebugPanel.svelte";
+  import EventFeed from "./EventFeed.svelte";
 
   let { onRespawn }: { onRespawn: () => void } = $props();
 </script>
@@ -13,5 +14,6 @@
 <StatsPanel />
 <BuildHud />
 <Status />
+<EventFeed />
 <DebugPanel />
 <RespawnOverlay {onRespawn} />

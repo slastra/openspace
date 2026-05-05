@@ -31,6 +31,7 @@ import {
   contactRadiusOf,
   isNeutral,
   isPlayer,
+  GameEvent,
   isInvulnerable,
   isStructure,
   isUnit,
@@ -74,10 +75,22 @@ export interface BodyRef {
 /**
  * Result of one server tick. Surfaces asteroid IDs culled this tick so
  * the room can schedule replacements; ArenaRoom owns the respawn queue.
+ * `events` is a per-tick log of GameEvents the room broadcasts (kills,
+ * base-attack alerts, etc.); pulled out and zeroed each tick.
  */
 export interface TickResult {
   culledAsteroidIds: string[];
+  events: TickEvent[];
 }
+
+/** Event emitted by the simulation, augmented with optional `targetSessionId`
+ *  for events that should be sent to one client only (e.g. base-attack
+ *  alerts). ArenaRoom uses the field to choose broadcast vs client.send. */
+export type TickEvent = {
+  event: GameEvent;
+  /** When set, deliver only to this client; otherwise broadcast to all. */
+  targetSessionId?: string;
+};
 
 /** Owner ship speed below which formation orbit runs at full rate. */
 const FORMATION_FREEZE_LO_SPEED = 30;
@@ -143,6 +156,14 @@ export interface SimContext {
    *  collision filter. Optional so existing test SimContexts that don't
    *  build the room scaffolding still construct cleanly. */
   ownerBitOf?: (sessionId: string) => number | undefined;
+  /** Per-tick scratch list of GameEvents to broadcast (kills, base
+   *  alerts). Cleared at the start of every `simulateTick`; ArenaRoom
+   *  drains it from TickResult.events at the end. */
+  pendingEvents: TickEvent[];
+  /** Per-base last-alert wall-clock time. Drives the BASE_ATTACK_COOLDOWN_MS
+   *  suppression so a sustained attack only fires ONE toast every 30s
+   *  instead of one per damaging hit. */
+  lastBaseAlertAt: Map<string, number>;
 }
 
 export function simulateTick(
@@ -153,6 +174,7 @@ export function simulateTick(
   ctx: SimContext,
 ): TickResult {
   ctx.tickIndex = (ctx.tickIndex + 1) | 0;
+  ctx.pendingEvents.length = 0;
   applyPlayerInputs(state, inputQueues, bodyRefs);
   applySupplyDeactivation(state);
   rebuildTickGrids(ctx.grids, state);
@@ -1361,6 +1383,26 @@ function cullAndRespawn(
       }
     }
     if (needsWreckage) {
+      // Emit kill event for the toast feed before clearing attribution.
+      // needsWreckage is true exactly once per death (the path below
+      // clears credits and orphans owned units), so this fires once per
+      // death without needing a separate "just died this tick" flag.
+      // Empty killerId/Name/Color = environmental death (perimeter wall,
+      // asteroid impact, dash burn) — client renders dimmed without
+      // a killer name.
+      const attackerId = lastAttackerByVictim.get(id) ?? "";
+      const attacker = attackerId ? state.players.get(attackerId) : null;
+      ctx.pendingEvents.push({
+        event: {
+          kind: "kill",
+          killerId: attacker ? attackerId : "",
+          killerName: attacker?.name ?? "",
+          killerColor: attacker?.color ?? "",
+          victimId: id,
+          victimName: player.name,
+          victimColor: player.color,
+        },
+      });
       const wid = ctx.allocWreckageId();
       const w = new Wreckage();
       w.id = wid;
@@ -1421,6 +1463,6 @@ function cullAndRespawn(
     player.credits = STARTING_CREDITS + supplyOwned;
   }
 
-  return { culledAsteroidIds };
+  return { culledAsteroidIds, events: ctx.pendingEvents };
 }
 

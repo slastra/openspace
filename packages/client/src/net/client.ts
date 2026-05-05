@@ -4,6 +4,9 @@ import {
   ArenaState,
   Asteroid,
   BuildStructureMessage,
+  EmoteKind,
+  EmoteMessage,
+  GameEvent,
   LeaderboardEntry,
   RecycleStructureMessage,
   Player,
@@ -159,6 +162,11 @@ export interface NetClientHandlers {
   onDisconnect?: (code: number) => void;
   onError?: (code: number, message: string) => void;
   onSnapshot?: () => void;
+  /** Server-broadcast game event (kill, emote, base-attack). Fired from
+   *  the Colyseus message channel — NOT in-state, so AOI filtering
+   *  doesn't apply. Callers feed these into the toast feed + (for
+   *  emotes) the world-space bubble effect. */
+  onEvent?: (event: GameEvent) => void;
 }
 
 export interface NetClient {
@@ -180,6 +188,10 @@ export interface NetClient {
   respawn(): void;
   /** Drop every owned unit's chase target — they all return to formation. */
   recall(): void;
+  /** Send an emote — server validates the enum, rate-limits, then
+   *  broadcasts an EmoteEvent that all clients render as a toast and
+   *  (when the sender is in their AOI) a world-space bubble. */
+  emote(kind: EmoteKind): void;
   /** Begin sustained dash thrust. Speed boost lasts until `dashEnd()`. */
   dashStart(): void;
   /** Stop sustained dash thrust. */
@@ -276,6 +288,7 @@ export async function connectToArena(opts: ConnectOptions = {}): Promise<NetClie
   room.onStateChange(() => handlers.onSnapshot?.());
   room.onLeave((code) => handlers.onDisconnect?.(code));
   room.onError((code, message) => handlers.onError?.(code, message ?? ""));
+  room.onMessage("event", (event: GameEvent) => handlers.onEvent?.(event));
 
   return {
     get sessionId() {
@@ -326,6 +339,10 @@ export async function connectToArena(opts: ConnectOptions = {}): Promise<NetClie
     },
     recall() {
       room.send("recall");
+    },
+    emote(kind) {
+      const msg: EmoteMessage = { emote: kind };
+      room.send("emote", msg);
     },
     dashStart() {
       room.send("dash-start");

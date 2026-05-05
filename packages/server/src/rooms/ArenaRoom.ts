@@ -105,6 +105,8 @@ export class ArenaRoom extends Room<ArenaState> {
     unitCooldownById: new Map(),
     structureCooldownById: new Map(),
     ownerBitOf: (sessionId: string) => this.ownerBitBySession.get(sessionId),
+    pendingEvents: [],
+    lastBaseAlertAt: new Map(),
   };
 
   override async onCreate() {
@@ -451,6 +453,22 @@ export class ArenaRoom extends Room<ArenaState> {
     }
     this.recomputeLeaderboard();
     this.recomputeViews();
+    // Drain GameEvents emitted this tick. Most go via room.broadcast()
+    // (kills, emotes); events with `targetSessionId` set route to a
+    // single client (base-attack alerts) so spectators don't see "X's
+    // base under attack" in their feed.
+    if (result.events.length > 0) {
+      for (const tev of result.events) {
+        if (tev.targetSessionId) {
+          const client = this.clients.find(
+            (c) => c.sessionId === tev.targetSessionId,
+          );
+          if (client) client.send("event", tev.event);
+        } else {
+          this.broadcast("event", tev.event);
+        }
+      }
+    }
   }
 
   /**
