@@ -502,16 +502,33 @@ function applySeparation(
 }
 
 function computeSlots(state: ArenaState): Map<string, SlotInfo> {
-  // Slots are baked into `unit.slotIndex` at spawn time and never reshuffle
-  // when peers die — surfaces the stored index to the formation math.
-  // `total` is unused by `stationOffset` but kept for the SlotInfo shape.
+  // Formation positions are sorted by (kind.formationTier, slotIndex) per
+  // owner: support kinds (repair/shield, tier 0) hug the player on the
+  // inner ring, front-liners (rammers, tier 4) push to the outside. Within
+  // a tier, the original spawn-order slotIndex is the stable tiebreaker so
+  // same-kind units don't reshuffle when a peer dies — only cross-tier
+  // spawns trigger a one-time visible shift outward for lower-priority
+  // kinds, which is the desired behavior.
   const out = new Map<string, SlotInfo>();
-  const totals = new Map<string, number>();
+  const byOwner = new Map<string, Unit[]>();
   for (const u of state.units.values()) {
-    totals.set(u.ownerId, (totals.get(u.ownerId) ?? 0) + 1);
+    let list = byOwner.get(u.ownerId);
+    if (!list) {
+      list = [];
+      byOwner.set(u.ownerId, list);
+    }
+    list.push(u);
   }
-  for (const u of state.units.values()) {
-    out.set(u.id, { index: u.slotIndex, total: totals.get(u.ownerId) ?? 1 });
+  for (const [, units] of byOwner) {
+    units.sort((a, b) => {
+      const ta = UNIT_KIND_META[a.kind]?.formationTier ?? 999;
+      const tb = UNIT_KIND_META[b.kind]?.formationTier ?? 999;
+      if (ta !== tb) return ta - tb;
+      return a.slotIndex - b.slotIndex;
+    });
+    for (let i = 0; i < units.length; i++) {
+      out.set(units[i]!.id, { index: i, total: units.length });
+    }
   }
   return out;
 }

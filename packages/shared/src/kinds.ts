@@ -59,6 +59,11 @@ export interface UnitKindMeta {
    *  gate on rotation alignment so the unit must physically face its target
    *  before firing (turret-like delay). Omitted = snap to desired angle. */
   rotationRateRadPerSec?: number;
+  /** Formation ring tier — lower = innermost. Owner's units are sorted by
+   *  (formationTier, slotIndex) before being assigned ring positions, so
+   *  support kinds (repair/shield) hug the player and front-liners (rammers)
+   *  push outward. Same tier ⇒ original spawn order is the tiebreaker. */
+  formationTier: number;
 }
 
 export const RAMMER: UnitKindMeta = {
@@ -75,6 +80,9 @@ export const RAMMER: UnitKindMeta = {
   // means a stack of enemies eats catastrophic chain damage.
   explodeRadius: 75,
   explodeDamage: 22,
+  // Outermost — they're the first to crash into things, want them on the
+  // perimeter so they intercept threats before reaching support kinds.
+  formationTier: 4,
 };
 
 /**
@@ -100,6 +108,7 @@ export const MINER: UnitKindMeta = {
   // Industrial fuel tank — small pop, mostly cosmetic.
   explodeRadius: 32,
   explodeDamage: 4,
+  formationTier: 2,
 };
 
 /**
@@ -131,6 +140,7 @@ export const LASER: UnitKindMeta = {
   // Capacitor blowout — modest pop.
   explodeRadius: 35,
   explodeDamage: 6,
+  formationTier: 1,
 };
 
 /**
@@ -155,6 +165,7 @@ export const GUNNER: UnitKindMeta = {
   // Ammo cookoff.
   explodeRadius: 40,
   explodeDamage: 8,
+  formationTier: 3,
 };
 
 /**
@@ -179,6 +190,8 @@ export const REPAIR: UnitKindMeta = {
   // Medbay quietly fizzles — barely a pop.
   explodeRadius: 28,
   explodeDamage: 3,
+  // Innermost — fragile support, hugs the player ship for protection.
+  formationTier: 0,
 };
 
 /**
@@ -207,6 +220,9 @@ export const SHIELDER: UnitKindMeta = {
   shieldRegenPerSec: 12,
   explodeRadius: 30,
   explodeDamage: 4,
+  // Innermost alongside repair — the aura needs to overlap allies, and
+  // the projector itself is a high-value protect-me target.
+  formationTier: 0,
 };
 
 /**
