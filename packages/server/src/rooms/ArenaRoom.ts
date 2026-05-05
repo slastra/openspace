@@ -7,6 +7,7 @@ import {
   ASTEROID_COUNT,
   BASE_CLAIM_RADIUS_U,
   SPAWN_BUBBLE_RADIUS_U,
+  SPAWN_INVULN_MS,
   ASTEROID_MIN_SPACING,
   ASTEROID_RESPAWN_DELAY_MS,
   ASTEROID_SPAWN_MARGIN,
@@ -311,6 +312,10 @@ export class ArenaRoom extends Room<ArenaState> {
     player.hp = PLAYER_MAX_HP;
     player.maxHp = PLAYER_MAX_HP;
     player.credits = STARTING_CREDITS;
+    // Fresh ship is invulnerable for SPAWN_INVULN_MS so the new player
+    // has time to drop their base + first miners without being insta-
+    // killed at spawn. Same window applies on respawn (cullAndRespawn).
+    player.invulnerableUntil = this.state.serverTime + SPAWN_INVULN_MS;
     player.supplyCap = STARTING_SUPPLY_CAP;
     player.supplyUsed = 0;
     this.colorCursor++;

@@ -34,6 +34,11 @@ export class Player extends Schema {
   /** True while the player is holding the dash key. Held = 2× speed but
    *  every owned unit takes DASH_FLEET_BURN_DPS HP/sec from the engine wash. */
   declare dashing: boolean;
+  /** Server time (ms) until which incoming damage to this ship is fully
+   *  ignored. Set on join + respawn to give a fresh / just-respawned
+   *  player a window to drop a base / get oriented without being insta-
+   *  killed. Zero ⇒ not invulnerable. */
+  declare invulnerableUntil: number;
 
   constructor() {
     super();
@@ -56,6 +61,7 @@ export class Player extends Schema {
     this.supplyCap = 0;
     this.supplyUsed = 0;
     this.dashing = false;
+    this.invulnerableUntil = 0;
   }
 }
 
@@ -82,6 +88,7 @@ defineTypes(Player, {
   supplyCap: "uint16",
   supplyUsed: "uint16",
   dashing: "boolean",
+  invulnerableUntil: "number",
 });
 
 /**

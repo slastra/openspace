@@ -40,6 +40,10 @@ export interface PlayerSnapshot {
   supplyCap: number;
   supplyUsed: number;
   dashing: boolean;
+  /** Server time (ms) until which this ship ignores all incoming damage.
+   *  Compare against `serverTime` to decide whether the spawn-invuln
+   *  visual should render. Zero ⇒ not invulnerable. */
+  invulnerableUntil: number;
   /** Server's tick time when this state was sampled — use for jitter-free interpolation. */
   serverTime: number;
 }
@@ -358,6 +362,7 @@ function toPlayerSnapshot(p: Player, serverTime: number): PlayerSnapshot {
     supplyCap: p.supplyCap,
     supplyUsed: p.supplyUsed,
     dashing: p.dashing,
+    invulnerableUntil: p.invulnerableUntil,
     serverTime,
   };
 }

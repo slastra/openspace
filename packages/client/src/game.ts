@@ -507,7 +507,7 @@ export function startGame({ renderer, input, net }: GameDeps) {
         // Both converge — prediction never disagrees with authority once the
         // round-trip completes.
         const speedMultiplier = dashHeld || local.dashing ? DASH_SPEED_MULTIPLIER : 1;
-        const stepped = local.step(dt, target, speedMultiplier);
+        const stepped = local.step(dt, target, speedMultiplier, serverNow);
         for (const i of stepped.inputs) net.send(i);
         renderer.camera.setTarget(stepped.x, stepped.y);
       } else {

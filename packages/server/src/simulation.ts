@@ -7,6 +7,7 @@ import {
   MAX_PROJECTILES_PER_ROOM,
   PLAYER_CONTACT_RADIUS,
   PLAYER_MAX_HP,
+  SPAWN_INVULN_MS,
   PLAYER_MINING_DPS,
   PLAYER_MINING_REACH,
   PROJECTILE_LIFETIME_GRACE_MS,
@@ -30,6 +31,7 @@ import {
   contactRadiusOf,
   isNeutral,
   isPlayer,
+  isInvulnerable,
   isStructure,
   isUnit,
   lookupCombatant,
@@ -679,7 +681,14 @@ function resolveCollisions(
       const victim = lookupCombatant(state, aIsWall ? idB : idA);
       // Structures are static and may live next to walls — skip wall instakill
       // for them. Players & units (mobile) still get insta-popped on impact.
-      if (victim && victim.hp > 0 && !isStructure(victim)) {
+      // Spawn-invuln players also get a pass — otherwise a fresh ship that
+      // glides into the perimeter during their grace window dies anyway.
+      if (
+        victim &&
+        victim.hp > 0 &&
+        !isStructure(victim) &&
+        !isInvulnerable(victim, state.serverTime)
+      ) {
         victim.shield = 0;
         victim.hp = 0;
         // Wall is environmental — clear attribution so the death yields
@@ -697,6 +706,7 @@ function resolveCollisions(
     if (aIsAsteroid || bIsAsteroid) {
       const victim = lookupCombatant(state, aIsAsteroid ? idB : idA);
       if (!victim || victim.hp <= 0) return;
+      if (isInvulnerable(victim, state.serverTime)) return;
       const ref = bodyRefs.get(victim.id);
       if (!ref) return;
       const v = bodyVelocity(ref.body);
@@ -720,8 +730,8 @@ function resolveCollisions(
     const vb = bodyVelocity(refB.body);
     const relSpeed = Math.hypot(va.x - vb.x, va.y - vb.y);
     const dmg = impactDamage(relSpeed);
-    applyDamage(a, dmg);
-    applyDamage(b, dmg);
+    if (!isInvulnerable(a, state.serverTime)) applyDamage(a, dmg);
+    if (!isInvulnerable(b, state.serverTime)) applyDamage(b, dmg);
     // Rammers carry a payload — any cross-team contact detonates them. The
     // existing `runExplosions` pass picks up the dead rammer this same tick
     // and applies its `explodeRadius`/`explodeDamage` AOE (with chain
@@ -751,7 +761,13 @@ function damage(
   amount: number,
   attackerId: string | undefined,
   ctx: SimContext,
+  now: number,
 ) {
+  // Spawn invulnerability — fresh / just-respawned ships fully ignore
+  // incoming damage for SPAWN_INVULN_MS. We also skip attribution so a
+  // hit that landed during invuln doesn't queue up a stale "killed by"
+  // record for the next time they actually die.
+  if (isInvulnerable(victim, now)) return;
   applyDamage(victim, amount);
   if (attackerId && isPlayer(victim)) {
     ctx.lastAttackerByVictim.set(victim.id, attackerId);
@@ -831,7 +847,7 @@ function runUnitAbilities(state: ArenaState, ctx: SimContext) {
           continue;
         }
       }
-      damage(target, dmg, unit.ownerId, ctx);
+      damage(target, dmg, unit.ownerId, ctx, state.serverTime);
     }
     ctx.unitCooldownById.set(unit.id, cd);
     // Wrap to keep uint16 range; client only watches for "value increased"
@@ -893,7 +909,7 @@ function runStructureAbilities(state: ArenaState, ctx: SimContext) {
     const dx = target.x - s.x;
     const dy = target.y - s.y;
     if (dx * dx + dy * dy > range * range) continue;
-    damage(target, dmg, s.ownerId, ctx);
+    damage(target, dmg, s.ownerId, ctx, state.serverTime);
     ctx.structureCooldownById.set(s.id, cd);
     s.fireCount = (s.fireCount + 1) & 0xffff;
   }
@@ -952,7 +968,7 @@ function burnFleetWhileDashing(state: ArenaState) {
   for (const [id, p] of state.players) {
     if (!p.dashing || p.hp <= 0) continue;
     burning.add(id);
-    applyDamage(p, dmg);
+    if (!isInvulnerable(p, state.serverTime)) applyDamage(p, dmg);
   }
   if (burning.size === 0) return;
   for (const u of state.units.values()) {
@@ -995,7 +1011,7 @@ function runExplosions(state: ArenaState, ctx: SimContext) {
         const dx = c.x - unit.x;
         const dy = c.y - unit.y;
         if (dx * dx + dy * dy > radSq) continue;
-        damage(c, dmg, unit.ownerId, ctx);
+        damage(c, dmg, unit.ownerId, ctx, state.serverTime);
       }
       progressed = true;
     }
@@ -1035,7 +1051,7 @@ function stepProjectiles(state: ArenaState, ctx: SimContext) {
       const dx = c.x - p.x;
       const dy = c.y - p.y;
       if (dx * dx + dy * dy > r * r) continue;
-      damage(c, p.damage, p.ownerId, ctx);
+      damage(c, p.damage, p.ownerId, ctx, state.serverTime);
       hit = true;
       break;
     }
@@ -1395,6 +1411,9 @@ function cullAndRespawn(
     player.hp = PLAYER_MAX_HP;
     player.shield = player.maxShield;
     player.deathCount++;
+    // Reset spawn invuln on each respawn so the player has time to fly
+    // out from the (likely camped) wreckage / base before taking hits.
+    player.invulnerableUntil = state.serverTime + SPAWN_INVULN_MS;
     let supplyOwned = 0;
     for (const s of state.structures.values()) {
       if (s.ownerId === id && s.kind === "supply") supplyOwned++;

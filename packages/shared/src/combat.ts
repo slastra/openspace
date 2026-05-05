@@ -51,6 +51,17 @@ export function contactRadiusOf(c: Combatant): number {
 }
 
 /**
+ * Spawn-invulnerability check. True when `c` is a player whose
+ * `invulnerableUntil` window hasn't elapsed yet — the damage path
+ * skips them entirely. Defensive on the field check so this is safe
+ * against entities that may not carry the field in their schema
+ * (Unit / Structure default to undefined, which is < `now`).
+ */
+export function isInvulnerable(c: Combatant, now: number): boolean {
+  return isPlayer(c) && c.invulnerableUntil > now;
+}
+
+/**
  * Apply damage to a combatant. Shield drains first; remaining damage hits HP.
  * Mutates `c`. Returns the amount actually absorbed (always equals `amount`
  * if positive, since HP is allowed to go below 0).

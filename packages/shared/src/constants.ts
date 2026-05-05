@@ -110,6 +110,12 @@ export const BASE_CLAIM_RADIUS_U = 600;
  *  out to before dropping their first base. */
 export const SPAWN_BUBBLE_RADIUS_U = 800;
 
+/** Duration (ms) the player ship is invulnerable to all damage after
+ *  spawning or respawning. Lets a fresh / just-respawned player set up
+ *  their first base + miners without being insta-killed at the spawn
+ *  point. Indicated visually on the ship while active. */
+export const SPAWN_INVULN_MS = 20000;
+
 export const PLAYER_COLORS = [
   "#4ade80",
   "#60a5fa",

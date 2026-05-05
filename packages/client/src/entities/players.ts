@@ -24,6 +24,7 @@ export class LocalPlayer {
   supplyCap: number;
   supplyUsed: number;
   dashing: boolean;
+  invulnerableUntil: number;
 
   constructor(snap: PlayerSnapshot, renderer: Renderer, getObstacles?: ObstacleProvider) {
     this.ship = createShipView();
@@ -48,6 +49,7 @@ export class LocalPlayer {
     this.supplyCap = snap.supplyCap;
     this.supplyUsed = snap.supplyUsed;
     this.dashing = snap.dashing;
+    this.invulnerableUntil = snap.invulnerableUntil;
   }
 
   applyServerUpdate(snap: PlayerSnapshot) {
@@ -62,6 +64,7 @@ export class LocalPlayer {
     this.supplyCap = snap.supplyCap;
     this.supplyUsed = snap.supplyUsed;
     this.dashing = snap.dashing;
+    this.invulnerableUntil = snap.invulnerableUntil;
     this.prediction.onServerUpdate(
       snap.x,
       snap.y,
@@ -77,6 +80,7 @@ export class LocalPlayer {
     dt: number,
     target: { x: number; y: number },
     speedMultiplier: number = 1,
+    serverNow: number = performance.now(),
   ): { inputs: PlayerInput[]; x: number; y: number; rotation: number } {
     const inputs = this.prediction.step(dt, target, speedMultiplier);
     this.prediction.advanceDisplay(dt);
@@ -84,11 +88,21 @@ export class LocalPlayer {
     const rotation = this.prediction.rotation;
     this.ship.container.x = pos.x;
     this.ship.container.y = pos.y;
+    this.ship.container.alpha = spawnInvulnAlpha(this.invulnerableUntil, serverNow);
     this.ship.setRotation(rotation);
     this.ship.setHp(this.maxHp > 0 ? this.hp / this.maxHp : 0);
     this.ship.setShield(this.maxShield > 0 ? this.shield / this.maxShield : 0);
     return { inputs, x: pos.x, y: pos.y, rotation };
   }
+}
+
+/** Pulsing alpha applied to a ship's container while spawn-invulnerable
+ *  so the visual is unmistakable. 0.85..1 amplitude with a 5Hz pulse —
+ *  noticeable without being distracting. Returns 1 (full opacity) when
+ *  the window has elapsed. */
+export function spawnInvulnAlpha(invulnerableUntil: number, serverNow: number): number {
+  if (invulnerableUntil <= serverNow) return 1;
+  return 0.55 + 0.3 * Math.sin(serverNow / 60);
 }
 
 /**
@@ -105,6 +119,7 @@ export class RemotePlayer {
   hp: number;
   maxHp: number;
   deathCount: number;
+  invulnerableUntil: number;
   /** Last position written to the view (used as the death-effect anchor). */
   renderedX: number;
   renderedY: number;
@@ -136,6 +151,7 @@ export class RemotePlayer {
     this.hp = snap.hp;
     this.maxHp = snap.maxHp;
     this.deathCount = snap.deathCount;
+    this.invulnerableUntil = snap.invulnerableUntil;
     this.renderedX = snap.x;
     this.renderedY = snap.y;
     this.hpFraction = snap.maxHp > 0 ? snap.hp / snap.maxHp : 1;
@@ -158,6 +174,7 @@ export class RemotePlayer {
     this.hp = snap.hp;
     this.maxHp = snap.maxHp;
     this.deathCount = snap.deathCount;
+    this.invulnerableUntil = snap.invulnerableUntil;
     this.hpFraction = snap.maxHp > 0 ? snap.hp / snap.maxHp : 1;
     this.shieldFraction = snap.maxShield > 0 ? snap.shield / snap.maxShield : 0;
   }
@@ -167,6 +184,7 @@ export class RemotePlayer {
     if (!s) return;
     this.ship.container.x = s.x;
     this.ship.container.y = s.y;
+    this.ship.container.alpha = spawnInvulnAlpha(this.invulnerableUntil, serverNow);
     this.ship.setRotation(s.rotation);
     this.ship.setHp(this.hpFraction);
     this.ship.setShield(this.shieldFraction);
