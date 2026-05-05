@@ -69,6 +69,12 @@ class HudState {
    *  Bounded — pushEvent drops the oldest when over MAX_FEED_ENTRIES. */
   events = $state<FeedEntry[]>([]);
 
+  /** Radial-menu open state. Non-null while right-click is held —
+   *  RadialEmoteMenu component renders + tracks pointer to pick wedge,
+   *  fires onEmote on release if past dead zone. Cleared by the
+   *  component itself on pointerup. */
+  emoteMenu = $state<{ x: number; y: number } | null>(null);
+
   pushFeedEntry(entry: FeedEntryInput) {
     // Cast keeps the discriminated union intact — Omit on the union
     // distributes oddly and TypeScript loses the kind narrowing.

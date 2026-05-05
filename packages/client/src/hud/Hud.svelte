@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { EmoteKind } from "@openspace/shared";
   import StatsPanel from "./StatsPanel.svelte";
   import PlayerList from "./PlayerList.svelte";
   import BuildHud from "./BuildHud.svelte";
@@ -6,8 +7,12 @@
   import Status from "./Status.svelte";
   import DebugPanel from "./DebugPanel.svelte";
   import EventFeed from "./EventFeed.svelte";
+  import RadialEmoteMenu from "./RadialEmoteMenu.svelte";
 
-  let { onRespawn }: { onRespawn: () => void } = $props();
+  let { onRespawn, onEmote }: {
+    onRespawn: () => void;
+    onEmote: (kind: EmoteKind) => void;
+  } = $props();
 </script>
 
 <PlayerList />
@@ -17,3 +22,4 @@
 <EventFeed />
 <DebugPanel />
 <RespawnOverlay {onRespawn} />
+<RadialEmoteMenu {onEmote} />

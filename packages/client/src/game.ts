@@ -211,6 +211,15 @@ export function startGame({ renderer, input, net }: GameDeps) {
   };
   input.onKeyTap("Escape", cancelModes);
   input.onRightClick(cancelModes);
+  // Right-button DOWN also opens the radial emote menu at the click
+  // point. Cancel + menu-open are non-conflicting: tap with no drag
+  // closes the menu silently AND fires cancel; drag-and-release fires
+  // an emote AND fires cancel (whatever build mode you were in is
+  // cleared either way, which feels right).
+  input.onRightDown((x, y) => {
+    const rect = renderer.app.canvas.getBoundingClientRect();
+    hud.emoteMenu = { x: rect.left + x, y: rect.top + y };
+  });
   input.onClick((sx, sy) => {
     const world = renderer.camera.screenToWorld(sx, sy);
     if (recycling) {

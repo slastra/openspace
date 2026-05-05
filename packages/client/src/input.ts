@@ -29,6 +29,15 @@ export interface InputState {
    * registered, so the click acts as a "cancel" gesture in-game.
    */
   onRightClick(handler: () => void): () => void;
+  /**
+   * Subscribe to right-button pointer-DOWN with cursor position. Distinct
+   * from `onRightClick` (which is also fired by the same event) — used by
+   * the radial emote menu to open at the click point. Cancel-mode and
+   * emote-menu-open both fire on the same event without conflicting:
+   * cancel closes any active build mode; menu opens; on release without
+   * drag the menu closes silently.
+   */
+  onRightDown(handler: (x: number, y: number) => void): () => void;
 }
 
 export function createInput(app: Application): InputState {
@@ -39,6 +48,7 @@ export function createInput(app: Application): InputState {
   const downKeys = new Set<string>();
   const clickHandlers = new Set<(x: number, y: number) => void>();
   const rightClickHandlers = new Set<() => void>();
+  const rightDownHandlers = new Set<(x: number, y: number) => void>();
 
   const onMove = (ev: PointerEvent) => {
     const rect = canvas.getBoundingClientRect();
@@ -74,6 +84,10 @@ export function createInput(app: Application): InputState {
       for (const fn of clickHandlers) fn(x, y);
     } else if (ev.button === 2) {
       for (const fn of rightClickHandlers) fn();
+      const rect = canvas.getBoundingClientRect();
+      const x = ev.clientX - rect.left;
+      const y = ev.clientY - rect.top;
+      for (const fn of rightDownHandlers) fn(x, y);
     }
   };
   // Suppress the browser context menu so right-click can be used as a
@@ -125,6 +139,10 @@ export function createInput(app: Application): InputState {
     onRightClick(handler) {
       rightClickHandlers.add(handler);
       return () => rightClickHandlers.delete(handler);
+    },
+    onRightDown(handler) {
+      rightDownHandlers.add(handler);
+      return () => rightDownHandlers.delete(handler);
     },
     isKeyDown(key) {
       return downKeys.has(key);

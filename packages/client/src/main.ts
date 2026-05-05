@@ -41,7 +41,10 @@ async function main() {
   // Mount the live HUD now that we have a net handle for the respawn callback.
   mount(Hud, {
     target: hudRoot,
-    props: { onRespawn: () => net.respawn() },
+    props: {
+      onRespawn: () => net.respawn(),
+      onEmote: (kind) => net.emote(kind),
+    },
   });
 
   startGame({ renderer, input, net });

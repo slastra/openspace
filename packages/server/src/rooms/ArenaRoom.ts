@@ -6,6 +6,9 @@ import {
   AOI_RADIUS_U,
   ASTEROID_COUNT,
   BASE_CLAIM_RADIUS_U,
+  EMOTE_COOLDOWN_MS,
+  EmoteMessage,
+  isKnownEmote,
   SPAWN_BUBBLE_RADIUS_U,
   SPAWN_INVULN_MS,
   ASTEROID_MIN_SPACING,
@@ -74,6 +77,9 @@ export class ArenaRoom extends Room<ArenaState> {
   private structureCounter = 0;
   private wreckageCounter = 0;
   private lastUnitSpawnAt = new Map<string, number>();
+  /** Per-player wall-clock time of last accepted emote. Drives the
+   *  EMOTE_COOLDOWN_MS rate limit so a player can't spam the feed. */
+  private lastEmoteAt = new Map<string, number>();
   /** Wall-clock timestamps at which a fresh asteroid should spawn. */
   private pendingAsteroidRespawnAt: number[] = [];
   /** Per-player Rapier collision-group bit (0..14). Drives the wall
@@ -269,6 +275,25 @@ export class ArenaRoom extends Room<ArenaState> {
       player.dashing = false;
     });
 
+    this.onMessage<EmoteMessage>("emote", (client, payload) => {
+      if (!payload || !isKnownEmote(payload.emote)) return;
+      const player = this.state.players.get(client.sessionId);
+      if (!player) return; // emoting while dead is fine — no hp gate
+      const now = performance.now();
+      const last = this.lastEmoteAt.get(client.sessionId) ?? 0;
+      if (now - last < EMOTE_COOLDOWN_MS) return;
+      this.lastEmoteAt.set(client.sessionId, now);
+      // Broadcast directly (no need to route through pendingEvents — this
+      // isn't tied to a sim tick). Same channel as other GameEvents.
+      this.broadcast("event", {
+        kind: "emote" as const,
+        senderId: client.sessionId,
+        senderName: player.name,
+        senderColor: player.color,
+        emote: payload.emote,
+      });
+    });
+
     console.log(`[ArenaRoom ${this.roomId}] created`);
   }
 
@@ -363,6 +388,7 @@ export class ArenaRoom extends Room<ArenaState> {
     this.state.leaderboard.delete(client.sessionId);
     this.inputQueues.delete(client.sessionId);
     this.lastUnitSpawnAt.delete(client.sessionId);
+    this.lastEmoteAt.delete(client.sessionId);
     this.visibleByClient.delete(client.sessionId);
     // Recycle the leaver's owner-bit so a future join can take it. The
     // leaver's walls / units / ship are torn down below, so no live body
