@@ -182,14 +182,22 @@ function buildWall(container: Container, color: string, size: number) {
     .stroke({ color: lighten(tint, 0.5), width: 1, alpha: 0.85 });
   container.addChild(inner);
 
-  // Diagonal hatch lines for the "armor plating" read.
+  // Diagonal hatch lines for the "armor plating" read. Each line follows
+  // x + y = o; clipped to the inner armor box [-inset,inset]² so the hatch
+  // doesn't bleed past the inner panel onto the dark frame.
   const hatch = new Graphics();
   const hatchColor = lighten(tint, 0.45);
   for (let i = -2; i <= 2; i++) {
     const o = i * (inset * 0.55);
+    // Line x+y=o intersects the box at two of its four sides depending on
+    // sign of o; pick the pair that lies inside [-inset, inset].
+    const sx = o >= 0 ? o - inset : -inset;
+    const sy = o >= 0 ? inset : o + inset;
+    const ex = o >= 0 ? inset : o + inset;
+    const ey = o >= 0 ? o - inset : -inset;
     hatch
-      .moveTo(-inset + o, inset)
-      .lineTo(inset + o, -inset)
+      .moveTo(sx, sy)
+      .lineTo(ex, ey)
       .stroke({ color: hatchColor, width: 0.75, alpha: 0.45 });
   }
   container.addChild(hatch);
