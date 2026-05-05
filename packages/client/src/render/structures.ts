@@ -1,5 +1,9 @@
 import { Container, Graphics } from "pixi.js";
-import { STRUCTURE_GRID_SNAP, STRUCTURE_KIND_META } from "@openspace/shared";
+import {
+  BASE_CLAIM_RADIUS_U,
+  STRUCTURE_GRID_SNAP,
+  STRUCTURE_KIND_META,
+} from "@openspace/shared";
 import { lighten, parseHexColor } from "./colors.js";
 
 export interface StructureView {
@@ -222,6 +226,16 @@ function buildBase(container: Container, color: string) {
   const half = SIZE / 2;
   const hullInset = half * 0.85;
   const bastion = half * 0.28;
+
+  // Territorial claim outline — faint owner-tinted ring so the player
+  // can see how far this base's no-enemy-build zone reaches. Drawn
+  // FIRST so the base hull sits on top; sized to BASE_CLAIM_RADIUS_U
+  // so it tracks any future tuning of the claim radius.
+  const claim = new Graphics();
+  claim
+    .circle(0, 0, BASE_CLAIM_RADIUS_U)
+    .stroke({ color: lighten(tint, 0.2), width: 2, alpha: 0.3 });
+  container.addChild(claim);
 
   // Main hull — thick square base. Slightly inset from cell edge so the
   // corner bastions read as separate structural elements.
