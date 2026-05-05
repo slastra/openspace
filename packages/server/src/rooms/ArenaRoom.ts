@@ -74,6 +74,16 @@ export class ArenaRoom extends Room<ArenaState> {
   private lastUnitSpawnAt = new Map<string, number>();
   /** Wall-clock timestamps at which a fresh asteroid should spawn. */
   private pendingAsteroidRespawnAt: number[] = [];
+  /** Per-player Rapier collision-group bit (0..14). Drives the wall
+   *  owner-passthrough filter — see physics.ts. Bits are recycled from
+   *  the free pool on leave so a re-join doesn't exhaust the cap. */
+  private ownerBitBySession = new Map<string, number>();
+  /** Free-bit pool. `pop()` hands out the lowest bit first. Sized to
+   *  MAX_PLAYERS_PER_ROOM so we always have one bit per connected client. */
+  private freeOwnerBits: number[] = Array.from(
+    { length: MAX_PLAYERS_PER_ROOM },
+    (_, i) => MAX_PLAYERS_PER_ROOM - 1 - i,
+  );
   /** Per-client previously-visible entity-id set. Used to apply hysteresis
    *  on AOI: an entity stays visible until it's past `AOI_RADIUS_U +
    *  AOI_HYSTERESIS_U` so units skating along the boundary don't pop in
@@ -92,6 +102,7 @@ export class ArenaRoom extends Room<ArenaState> {
     tickIndex: 0,
     unitCooldownById: new Map(),
     structureCooldownById: new Map(),
+    ownerBitOf: (sessionId: string) => this.ownerBitBySession.get(sessionId),
   };
 
   override async onCreate() {
@@ -272,6 +283,7 @@ export class ArenaRoom extends Room<ArenaState> {
       x,
       y,
       radius: meta.contactRadius,
+      ownerBit: this.ownerBitBySession.get(ownerId),
     });
     this.bodyRefs.set(unit.id, ref);
   }
@@ -296,6 +308,13 @@ export class ArenaRoom extends Room<ArenaState> {
 
     this.state.players.set(client.sessionId, player);
     this.inputQueues.set(client.sessionId, []);
+    // Allocate this player's owner-bit for wall passthrough — must happen
+    // BEFORE the player ship body is created so the ship's collision
+    // group is set correctly on its first tick.
+    const ownerBit = this.freeOwnerBits.pop();
+    if (ownerBit !== undefined) {
+      this.ownerBitBySession.set(client.sessionId, ownerBit);
+    }
     // Per-client view: every entity map in ArenaState is view-filtered, so
     // without a view the client receives nothing. recomputeViews() in the
     // tick loop populates it with everything inside AOI of this player's
@@ -311,6 +330,7 @@ export class ArenaRoom extends Room<ArenaState> {
       // Heavy ship: collisions with units mostly shove the unit aside, so
       // the player can dash through their own swarm without stalling.
       density: 12,
+      ownerBit,
     });
     this.bodyRefs.set(client.sessionId, ref);
 
@@ -328,6 +348,14 @@ export class ArenaRoom extends Room<ArenaState> {
     this.inputQueues.delete(client.sessionId);
     this.lastUnitSpawnAt.delete(client.sessionId);
     this.visibleByClient.delete(client.sessionId);
+    // Recycle the leaver's owner-bit so a future join can take it. The
+    // leaver's walls / units / ship are torn down below, so no live body
+    // still references this bit by the time we hand it out again.
+    const leaverBit = this.ownerBitBySession.get(client.sessionId);
+    if (leaverBit !== undefined) {
+      this.ownerBitBySession.delete(client.sessionId);
+      this.freeOwnerBits.push(leaverBit);
+    }
     this.simCtx.creditAccrual.delete(client.sessionId);
     this.simCtx.lastAttackerByVictim.delete(client.sessionId);
     this.simCtx.pendingRespawnSet.delete(client.sessionId);
@@ -624,6 +652,9 @@ export class ArenaRoom extends Room<ArenaState> {
       y,
       radius: meta.halfExtent,
       shape: meta.colliderShape ?? "ball",
+      // Walls (cuboid) get owner-passthrough — owner's units/ship/projectiles
+      // pass through their own walls. Other structure shapes ignore this.
+      ownerBit: this.ownerBitBySession.get(ownerId),
     });
     this.bodyRefs.set(s.id, ref);
   }

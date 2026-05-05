@@ -48,6 +48,7 @@ import {
   removeCombatantBody,
   RigidBody,
   setBodyVelocity,
+  setColliderOwnerBit,
   stepWorld,
 } from "./physics.js";
 import { arriveAtStation, lookupKind } from "./behaviors.js";
@@ -136,6 +137,10 @@ export interface SimContext {
   unitCooldownById: Map<string, number>;
   /** Per-structure fire-cooldown clock (seconds). Same role as above. */
   structureCooldownById: Map<string, number>;
+  /** Owner-bit lookup from sessionId — drives the wall-passthrough
+   *  collision filter. Optional so existing test SimContexts that don't
+   *  build the room scaffolding still construct cleanly. */
+  ownerBitOf?: (sessionId: string) => number | undefined;
 }
 
 export function simulateTick(
@@ -162,7 +167,7 @@ export function simulateTick(
   stepProjectiles(state, ctx);
   burnFleetWhileDashing(state);
   runExplosions(state, ctx);
-  claimWreckages(state, bodyRefs, phys);
+  claimWreckages(state, bodyRefs, phys, ctx);
   return cullAndRespawn(state, bodyRefs, phys, ctx);
 }
 
@@ -1164,6 +1169,7 @@ function claimWreckages(
   state: ArenaState,
   bodyRefs: Map<string, BodyRef>,
   phys: PhysicsWorld,
+  ctx: SimContext,
 ) {
   if (state.wreckages.size === 0) return;
   const now = state.serverTime;
@@ -1199,12 +1205,20 @@ function claimWreckages(
     if (!claimer) continue;
 
     claimer.credits += w.credits;
+    const claimerBit = ctx.ownerBitOf?.(claimerId);
     for (const u of state.units.values()) {
       if (u.wreckageId !== wid) continue;
       u.ownerId = claimerId;
       u.wreckageId = "";
       const meta = UNIT_KIND_META[u.kind];
       if (meta) claimer.supplyUsed += meta.supplyCost;
+      // Refresh the unit's collision-group membership so it now passes
+      // through the new owner's walls (and stops passing through the old
+      // owner's, who is presumably dead at this point anyway).
+      if (claimerBit !== undefined) {
+        const ref = bodyRefs.get(u.id);
+        if (ref) setColliderOwnerBit(phys, ref.colliderHandle, claimerBit);
+      }
     }
     removed.push(wid);
   }

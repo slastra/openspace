@@ -58,6 +58,43 @@ export interface BodyOptions {
    *  contacts with light units mostly shove the unit aside instead of
    *  stalling the ship — important for dash flow through your own swarm. */
   density?: number;
+  /** Owner slot bit (0..14) used by Rapier collision groups so the
+   *  body's owner walls (which exclude this bit from their filter) let
+   *  the body pass through them. Omit for owner-less bodies — they get
+   *  the default "collide with everything" group. */
+  ownerBit?: number;
+}
+
+/**
+ * Build a Rapier `InteractionGroups` u32 (`(memberships << 16) | filter`).
+ * Two colliders A and B collide iff
+ *   `(A.memberships & B.filter) != 0 && (B.memberships & A.filter) != 0`.
+ *
+ * Owner-passthrough plan: every player gets one of bits 0..14 as their
+ * "owner bit." Walls owned by player X have a filter that EXCLUDES X's
+ * bit, so any dynamic body whose membership equals X's bit (X's own
+ * units / ship) doesn't collide. Enemy bodies have different bits and
+ * still collide normally.
+ */
+function makeGroups(memberships: number, filter: number): number {
+  return ((memberships & 0xffff) << 16) | (filter & 0xffff);
+}
+
+/** Default — collide with everything (and be collided by everything). */
+const GROUPS_DEFAULT = makeGroups(0xffff, 0xffff);
+
+/** Memberships = single owner bit, filter = all. The body collides with
+ *  everything except walls whose filter excludes this owner bit. */
+function ownerMemberGroups(ownerBit: number): number {
+  return makeGroups(1 << ownerBit, 0xffff);
+}
+
+/** Wall filter excludes its owner's bit so the owner's units / ship pass
+ *  through. Non-owner dynamic bodies have other membership bits and are
+ *  still blocked. Memberships stay full so this collider participates in
+ *  every other collision (asteroids, enemy bodies, etc.). */
+function wallOwnerFilterGroups(ownerBit: number): number {
+  return makeGroups(0xffff, 0xffff & ~(1 << ownerBit));
 }
 
 /**
@@ -75,10 +112,13 @@ export function addCombatantBody(
     .lockRotations(); // Top-down ships don't spin under physics; rotation is a render-only concept.
   const body = phys.world.createRigidBody(bodyDesc);
 
+  const groups =
+    opts.ownerBit !== undefined ? ownerMemberGroups(opts.ownerBit) : GROUPS_DEFAULT;
   const colliderDesc = RAPIER.ColliderDesc.ball(opts.radius)
     .setRestitution(opts.restitution ?? 0)
     .setFriction(0.0)
     .setDensity(opts.density ?? 1)
+    .setCollisionGroups(groups)
     .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
   const collider = phys.world.createCollider(colliderDesc, body);
 
@@ -106,6 +146,9 @@ export function addStructureBody(
     y: number;
     radius: number;
     shape?: "ball" | "cuboid";
+    /** Owner slot bit. Only meaningful for walls (cuboid + owner-passthrough);
+     *  ignored for structures with no owner-bit semantics. */
+    ownerBit?: number;
   },
 ): { body: RAPIER.RigidBody; colliderHandle: number } {
   const bodyDesc = RAPIER.RigidBodyDesc.fixed().setTranslation(opts.x, opts.y);
@@ -115,13 +158,37 @@ export function addStructureBody(
     shape === "cuboid"
       ? RAPIER.ColliderDesc.cuboid(opts.radius, opts.radius)
       : RAPIER.ColliderDesc.ball(opts.radius);
+  // Only walls (cuboid) get the owner-pass-through filter today. Other
+  // structures keep the default "collide with everything" group so
+  // supplies/turrets/bases still bump same-team units like always.
+  const groups =
+    shape === "cuboid" && opts.ownerBit !== undefined
+      ? wallOwnerFilterGroups(opts.ownerBit)
+      : GROUPS_DEFAULT;
   colliderDesc
     .setRestitution(0)
     .setFriction(0.0)
+    .setCollisionGroups(groups)
     .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
   const collider = phys.world.createCollider(colliderDesc, body);
   phys.handleMap.set(collider.handle, opts.entityId);
   return { body, colliderHandle: collider.handle };
+}
+
+/**
+ * Live-update a collider's owner bit. Used when a wreckage is claimed and
+ * a transferred unit needs to start passing through its new owner's
+ * walls (its membership bit must match the new owner). No-op if the
+ * collider was destroyed between the lookup and the update.
+ */
+export function setColliderOwnerBit(
+  phys: PhysicsWorld,
+  colliderHandle: number,
+  ownerBit: number,
+) {
+  const collider = phys.world.getCollider(colliderHandle);
+  if (!collider) return;
+  collider.setCollisionGroups(ownerMemberGroups(ownerBit));
 }
 
 /**
