@@ -6,6 +6,7 @@ import {
   UNIT_KIND_META,
   Unit,
   UnitKindMeta,
+  lookupCombatant,
   stationTarget,
   teamOf,
 } from "@openspace/shared";
@@ -203,8 +204,10 @@ const REPAIR_BEHAVIOR: KindBehavior = {
   acquireTarget(unit, state, meta, grids) {
     const range = meta.repairRange ?? 200;
     if (unit.targetId) {
-      const held =
-        state.players.get(unit.targetId) ?? state.units.get(unit.targetId);
+      // Walks players + units + structures so a damaged friendly wall /
+      // supply / base survives the sticky check (otherwise the drone
+      // re-acquired every tick and runRepairs failed the same lookup).
+      const held = lookupCombatant(state, unit.targetId);
       if (
         held &&
         held.hp > 0 &&

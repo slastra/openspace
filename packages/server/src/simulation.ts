@@ -1076,7 +1076,10 @@ function runShieldAuras(state: ArenaState) {
 /**
  * Per-tick repair pass. For every unit with `repairHps + repairRange` set
  * and a friendly target in range, restore `repairHps * TICK_DT` HP capped
- * at maxHp. Multiple repair drones on one target stack linearly.
+ * at maxHp. Multiple repair drones on one target stack linearly. Includes
+ * structures — `lookupCombatant` walks players + units + structures so
+ * walls / supplies / bases damaged in a fight can be patched up by the
+ * same drone that heals units.
  */
 function runRepairs(state: ArenaState) {
   for (const unit of state.units.values()) {
@@ -1087,8 +1090,7 @@ function runRepairs(state: ArenaState) {
     const hps = meta?.repairHps ?? 0;
     const range = meta?.repairRange ?? 0;
     if (hps <= 0 || range <= 0) continue;
-    const target =
-      state.players.get(unit.targetId) ?? state.units.get(unit.targetId);
+    const target = lookupCombatant(state, unit.targetId);
     if (!target) continue;
     if (target.hp <= 0 || target.hp >= target.maxHp) continue;
     if (teamOf(target) !== teamOf(unit)) continue;
