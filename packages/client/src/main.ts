@@ -1,6 +1,6 @@
 import { mount, unmount } from "svelte";
 import { createRenderer } from "./render/renderer.js";
-import { buildGrid, buildStarfield } from "./render/background.js";
+import { buildGrid, buildSpawnBubble, buildStarfield } from "./render/background.js";
 import { generateBuildIcons } from "./render/build-icons.js";
 import { createInput } from "./input.js";
 import { connectToArena } from "./net/client.js";
@@ -22,6 +22,7 @@ async function main() {
   const renderer = await createRenderer(host);
   buildStarfield(renderer.background);
   buildGrid(renderer.world);
+  buildSpawnBubble(renderer.world);
   renderer.world.setChildIndex(renderer.entities, renderer.world.children.length - 1);
 
   // Snapshot every build-card's in-game art once. Components pull from

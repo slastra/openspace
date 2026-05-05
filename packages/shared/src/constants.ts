@@ -102,6 +102,14 @@ export const AOI_HYSTERESIS_U = 300;
  *  unaffected — claim only blocks new placements. */
 export const BASE_CLAIM_RADIUS_U = 600;
 
+/** Radius (world units) of the no-build bubble around the world-center
+ *  spawn point. Players initially spawn in this area (or respawn there
+ *  if they have no base); the bubble keeps anyone from walling in the
+ *  spawn zone or planting a base on top of it. The bubble is drawn on
+ *  the world layer so players can see exactly where they need to fly
+ *  out to before dropping their first base. */
+export const SPAWN_BUBBLE_RADIUS_U = 800;
+
 export const PLAYER_COLORS = [
   "#4ade80",
   "#60a5fa",

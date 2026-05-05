@@ -6,6 +6,7 @@ import {
   AOI_RADIUS_U,
   ASTEROID_COUNT,
   BASE_CLAIM_RADIUS_U,
+  SPAWN_BUBBLE_RADIUS_U,
   ASTEROID_MIN_SPACING,
   ASTEROID_RESPAWN_DELAY_MS,
   ASTEROID_SPAWN_MARGIN,
@@ -191,6 +192,14 @@ export class ArenaRoom extends Room<ArenaState> {
         const dy = p.y - sy;
         if (dx * dx + dy * dy < playerReachSq) return;
       }
+      // No-build bubble around the world-center spawn point. Keeps
+      // anyone from walling in the spawn zone or dropping a base on top
+      // of it (which would let them base-camp respawning players).
+      const cx = WORLD_WIDTH / 2;
+      const cy = WORLD_HEIGHT / 2;
+      const sdx = sx - cx;
+      const sdy = sy - cy;
+      if (sdx * sdx + sdy * sdy < SPAWN_BUBBLE_RADIUS_U * SPAWN_BUBBLE_RADIUS_U) return;
       // Base territorial claim: enemy bases within BASE_CLAIM_RADIUS_U
       // block any new placement here (your own base doesn't block — you
       // build freely inside your own territory). Existing structures

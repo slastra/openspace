@@ -1,5 +1,11 @@
 import { Container, Graphics } from "pixi.js";
-import { GRID_COLOR, GRID_SPACING, WORLD_HEIGHT, WORLD_WIDTH } from "@openspace/shared";
+import {
+  GRID_COLOR,
+  GRID_SPACING,
+  SPAWN_BUBBLE_RADIUS_U,
+  WORLD_HEIGHT,
+  WORLD_WIDTH,
+} from "@openspace/shared";
 
 export function buildStarfield(parent: Container) {
   // Stars are drawn once into a single Graphics in screen-ish space and panned
@@ -37,4 +43,22 @@ export function buildGrid(parent: Container) {
 
   parent.addChild(grid);
   return grid;
+}
+
+/**
+ * Faint circular outline marking the no-build spawn bubble at world
+ * center. Lives in world space so it pans with the camera. Draws a
+ * dim filled disc + a brighter outline so a player flying past can
+ * tell they're inside the bubble (no-build zone) at a glance.
+ */
+export function buildSpawnBubble(parent: Container) {
+  const bubble = new Graphics();
+  const cx = WORLD_WIDTH / 2;
+  const cy = WORLD_HEIGHT / 2;
+  bubble
+    .circle(cx, cy, SPAWN_BUBBLE_RADIUS_U)
+    .fill({ color: 0x4ade80, alpha: 0.04 })
+    .stroke({ color: 0x4ade80, width: 2, alpha: 0.45 });
+  parent.addChild(bubble);
+  return bubble;
 }

@@ -1,6 +1,9 @@
 import {
   BASE_CLAIM_RADIUS_U,
   DASH_SPEED_MULTIPLIER,
+  SPAWN_BUBBLE_RADIUS_U,
+  WORLD_HEIGHT,
+  WORLD_WIDTH,
   PLAYER_CONTACT_RADIUS,
   STRUCTURE_KIND_META,
   UNIT_SPAWN_COOLDOWN_MS,
@@ -714,6 +717,16 @@ function canPlace(
     const dx = r.renderedX - snapX;
     const dy = r.renderedY - snapY;
     if (dx * dx + dy * dy < reachSq) return false;
+  }
+  // No-build bubble around the world-center spawn point. Mirrors the
+  // server-side check so the ghost reads red while the cursor is over
+  // the spawn zone.
+  {
+    const cx = WORLD_WIDTH / 2;
+    const cy = WORLD_HEIGHT / 2;
+    const dx = snapX - cx;
+    const dy = snapY - cy;
+    if (dx * dx + dy * dy < SPAWN_BUBBLE_RADIUS_U * SPAWN_BUBBLE_RADIUS_U) return false;
   }
   // Mirror server base-claim check so the placement ghost reads red over
   // enemy claimed territory before the click ever fires. Own base doesn't
