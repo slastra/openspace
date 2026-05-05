@@ -31,6 +31,7 @@ import {
   contactRadiusOf,
   isNeutral,
   isPlayer,
+  BASE_ATTACK_COOLDOWN_MS,
   GameEvent,
   isInvulnerable,
   isStructure,
@@ -180,7 +181,7 @@ export function simulateTick(
   rebuildTickGrids(ctx.grids, state);
   runUnitAI(state, bodyRefs, ctx);
   stepWorld(phys);
-  resolveCollisions(state, phys, bodyRefs, ctx.lastAttackerByVictim);
+  resolveCollisions(state, phys, bodyRefs, ctx);
   readBackPlayers(state, bodyRefs, ctx);
   readBackUnits(state, bodyRefs, ctx);
   mineAsteroids(state, ctx.creditAccrual);
@@ -692,8 +693,9 @@ function resolveCollisions(
   state: ArenaState,
   phys: PhysicsWorld,
   bodyRefs: Map<string, BodyRef>,
-  lastAttackerByVictim: Map<string, string>,
+  ctx: SimContext,
 ) {
+  const { lastAttackerByVictim } = ctx;
   drainContacts(phys, (idA, idB, started) => {
     if (!started) return;
     const aIsWall = idA === WALL_ENTITY_ID;
@@ -752,8 +754,11 @@ function resolveCollisions(
     const vb = bodyVelocity(refB.body);
     const relSpeed = Math.hypot(va.x - vb.x, va.y - vb.y);
     const dmg = impactDamage(relSpeed);
-    if (!isInvulnerable(a, state.serverTime)) applyDamage(a, dmg);
-    if (!isInvulnerable(b, state.serverTime)) applyDamage(b, dmg);
+    // Route through damage() so base-attack alerts fire on player-ship-
+    // rams-base collisions (otherwise the direct applyDamage bypassed
+    // the alert path). damage() also re-applies the invuln check.
+    damage(a, dmg, teamOf(b), ctx, state.serverTime);
+    damage(b, dmg, teamOf(a), ctx, state.serverTime);
     // Rammers carry a payload — any cross-team contact detonates them. The
     // existing `runExplosions` pass picks up the dead rammer this same tick
     // and applies its `explodeRadius`/`explodeDamage` AOE (with chain
@@ -793,6 +798,26 @@ function damage(
   applyDamage(victim, amount);
   if (attackerId && isPlayer(victim)) {
     ctx.lastAttackerByVictim.set(victim.id, attackerId);
+  }
+  // Base-under-attack alert. Fires when a base structure takes damage,
+  // routed PRIVATELY to the base owner (TickEvent.targetSessionId), and
+  // suppressed by BASE_ATTACK_COOLDOWN_MS so a sustained attack only
+  // produces ONE toast every 30s instead of one per damaging hit.
+  // Uses a minimal duck-type check on `kind` to avoid pulling in
+  // isStructure (which would require another import shuffle and the
+  // string comparison is cheaper anyway).
+  if ((victim as { kind?: string }).kind === "base") {
+    const baseOwner = (victim as { ownerId?: string }).ownerId;
+    if (baseOwner) {
+      const lastAt = ctx.lastBaseAlertAt.get(baseOwner) ?? 0;
+      if (now - lastAt >= BASE_ATTACK_COOLDOWN_MS) {
+        ctx.lastBaseAlertAt.set(baseOwner, now);
+        ctx.pendingEvents.push({
+          targetSessionId: baseOwner,
+          event: { kind: "base-attack" },
+        });
+      }
+    }
   }
 }
 
