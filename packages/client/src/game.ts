@@ -1,6 +1,7 @@
 import {
   BASE_CLAIM_RADIUS_U,
   DASH_SPEED_MULTIPLIER,
+  EmoteKind,
   SPAWN_BUBBLE_RADIUS_U,
   WORLD_HEIGHT,
   WORLD_WIDTH,
@@ -27,6 +28,7 @@ import { createDeathBurst } from "./effects/death.js";
 import { createRespawnPulse } from "./effects/respawn.js";
 import { createBeam } from "./effects/beam.js";
 import { createBulletPop } from "./effects/bullet-pop.js";
+import { createEmoteBubble } from "./effects/emote-bubble.js";
 import { createExplosion } from "./effects/explosion.js";
 import { DebugOverlay } from "./debug/overlay.js";
 import { HealTetherLayer } from "./render/heal-tether.js";
@@ -502,6 +504,22 @@ export function startGame({ renderer, input, net }: GameDeps) {
           senderColor: event.senderColor,
           emote: event.emote,
         });
+        // World-space bubble above the sender's ship — only renders if
+        // the sender is in our AOI (we have their ship position). When
+        // they're not, the toast in the feed is the universal cue.
+        const glyph = EMOTE_GLYPHS[event.emote];
+        if (glyph) {
+          const senderId = event.senderId;
+          const anchor = () => {
+            if (senderId === net.sessionId && local) {
+              return { x: local.ship.container.x, y: local.ship.container.y };
+            }
+            const r = remotes.get(senderId);
+            if (r) return { x: r.renderedX, y: r.renderedY };
+            return null;
+          };
+          if (anchor()) effects.add(createEmoteBubble(glyph, anchor));
+        }
       } else if (event.kind === "base-attack") {
         hud.pushFeedEntry({ kind: "base-attack" });
       }
@@ -630,6 +648,18 @@ export function startGame({ renderer, input, net }: GameDeps) {
     hud.pruneFeed(now);
   });
 }
+
+/** Wire emote enums to their world-space glyph. The HUD feed uses its
+ *  own copy with labels; this one is just the glyph-by-kind lookup
+ *  used to spawn the floating bubble effect. */
+const EMOTE_GLYPHS: Record<EmoteKind, string> = {
+  greet: "👋",
+  help: "⚠️",
+  attack: "⚔️",
+  truce: "🤝",
+  thanks: "👍",
+  rip: "💀",
+};
 
 /**
  * Build the rank list from the server-broadcast leaderboard map. Counts are
