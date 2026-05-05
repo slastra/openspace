@@ -49,6 +49,10 @@ export function createStructureView(
       buildBase(container, color);
       break;
     }
+    case "medbay": {
+      buildMedbay(container, color);
+      break;
+    }
     case "supply":
     default:
       buildSupply(container, color);
@@ -282,6 +286,44 @@ function buildBase(container: Container, color: string) {
     .fill({ color: 0xffffff, alpha: 0.95 })
     .stroke({ color: lighten(tint, 0.7), width: 1, alpha: 0.95 });
   container.addChild(core);
+}
+
+/**
+ * Medbay — passive heal aura. Reads as a medical pad: rounded owner-
+ * tinted hull, soft greenish-white pulse halo (drawn statically here;
+ * a per-frame pulse would mean adding state on the structure entity),
+ * bold white cross at the center for the universal "healing" cue.
+ */
+function buildMedbay(container: Container, color: string) {
+  const tint = parseHexColor(color);
+  const half = SIZE / 2;
+
+  // Soft halo — hint of "aura active" without overlapping nearby structures.
+  const halo = new Graphics();
+  halo
+    .circle(0, 0, half * 1.05)
+    .fill({ color: 0xa3e635, alpha: 0.08 });
+  container.addChild(halo);
+
+  // Hull — rounded square, tinted by owner.
+  const hull = new Graphics();
+  hull
+    .roundRect(-half * 0.85, -half * 0.85, half * 1.7, half * 1.7, 8)
+    .fill({ color: 0x1a1f2e, alpha: 0.92 })
+    .stroke({ color: lighten(tint, 0.35), width: 2, alpha: 0.95 });
+  container.addChild(hull);
+
+  // White cross — universal medic emblem.
+  const cross = new Graphics();
+  const armW = half * 0.22;
+  const armL = half * 0.62;
+  cross
+    .rect(-armW, -armL, armW * 2, armL * 2)
+    .fill({ color: 0xffffff, alpha: 0.95 });
+  cross
+    .rect(-armL, -armW, armL * 2, armW * 2)
+    .fill({ color: 0xffffff, alpha: 0.95 });
+  container.addChild(cross);
 }
 
 function buildSupply(container: Container, color: string) {

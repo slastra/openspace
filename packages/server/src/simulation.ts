@@ -163,6 +163,7 @@ export function simulateTick(
   runUnitAbilities(state, ctx);
   runStructureAbilities(state, ctx);
   runRepairs(state);
+  runMedbays(state, ctx);
   runShieldAuras(state);
   stepProjectiles(state, ctx);
   burnFleetWhileDashing(state);
@@ -1070,6 +1071,36 @@ function runShieldAuras(state: ArenaState) {
         c.shield = Math.min(c.maxShield, c.shield + regen * TICK_DT);
       }
     }
+  }
+}
+
+/**
+ * Per-tick medbay heal aura. For every structure with `healHps + healRange`
+ * set, restore that HPS to every friendly Combatant (player ship, unit,
+ * structure) within range. Uses the spatial grid for the candidate scan
+ * so the inner cost is local-density × #medbays. Heals stack with repair
+ * drones on the same target — both share the standard `c.hp += amount`
+ * path with maxHp clamp.
+ */
+function runMedbays(state: ArenaState, ctx: SimContext) {
+  for (const s of state.structures.values()) {
+    if (s.hp <= 0) continue;
+    const meta = STRUCTURE_KIND_META[s.kind];
+    const hps = meta?.healHps ?? 0;
+    const range = meta?.healRange ?? 0;
+    if (hps <= 0 || range <= 0) continue;
+    const heal = hps * TICK_DT;
+    const team = s.ownerId;
+    const radSq = range * range;
+    ctx.grids.combatants.forEachInRadius(s.x, s.y, range, (c) => {
+      if (c.hp <= 0) return;
+      if (c.hp >= c.maxHp) return;
+      if (teamOf(c) !== team) return;
+      const dx = c.x - s.x;
+      const dy = c.y - s.y;
+      if (dx * dx + dy * dy > radSq) return;
+      c.hp = Math.min(c.maxHp, c.hp + heal);
+    });
   }
 }
 

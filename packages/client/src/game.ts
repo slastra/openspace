@@ -186,6 +186,14 @@ export function startGame({ renderer, input, net }: GameDeps) {
     }
     placementGhost.container.visible = placing !== null;
   });
+  input.onKeyTap("KeyT", () => {
+    placing = placing === "medbay" ? null : "medbay";
+    if (placing) {
+      recycling = false;
+      placementGhost.setKind(placing);
+    }
+    placementGhost.container.visible = placing !== null;
+  });
   input.onKeyTap("KeyX", () => {
     recycling = !recycling;
     if (recycling) {
@@ -225,7 +233,7 @@ export function startGame({ renderer, input, net }: GameDeps) {
       // the player's ship out of overlaps the same way Rapier does on the
       // server. Without this, drift on contact triggers reconcile snaps.
       local = new LocalPlayer(snap, renderer, () =>
-        worldObstacles(asteroids, structures),
+        worldObstacles(asteroids, structures, net.sessionId),
       );
       renderer.camera.setTarget(snap.x, snap.y);
     },
@@ -731,6 +739,7 @@ function canPlace(
 function* worldObstacles(
   asteroids: Map<string, Asteroid>,
   structures: Map<string, Structure>,
+  localSessionId: string,
 ): Iterable<{ x: number; y: number; radius: number }> {
   for (const a of asteroids.values()) {
     yield { x: a.view.container.x, y: a.view.container.y, radius: a.radius };
@@ -738,6 +747,17 @@ function* worldObstacles(
   for (const s of structures.values()) {
     const meta = STRUCTURE_KIND_META[s.kind];
     if (!meta) continue;
+    // Server gives our walls (cuboid + owner-passthrough filter) a free
+    // pass for our own ship — mirror that here so the local predictor
+    // doesn't bounce the ship off a wall the server is letting it through.
+    // Only walls have the passthrough filter; supplies/turrets/bases keep
+    // the default collide-with-everyone group.
+    if (
+      meta.colliderShape === "cuboid" &&
+      s.ownerId === localSessionId
+    ) {
+      continue;
+    }
     yield {
       x: s.view.container.x,
       y: s.view.container.y,

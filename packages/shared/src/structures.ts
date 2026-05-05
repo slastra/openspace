@@ -34,6 +34,12 @@ export interface StructureKindMeta {
    *  exactly one home, multiples would let one player dominate too much
    *  map via the claim radius and make spawn-at-base ambiguous). */
   maxPerPlayer?: number;
+  /** HP/sec restored to every friendly Combatant in `healRange`. Only set
+   *  on healing structures (e.g. medbay). Stacks with repair-drone heals
+   *  on the same target up to maxHp. */
+  healHps?: number;
+  /** Aura radius (world units) over which `healHps` is applied. */
+  healRange?: number;
 }
 
 export const SUPPLY: StructureKindMeta = {
@@ -98,11 +104,35 @@ export const BASE: StructureKindMeta = {
   maxPerPlayer: 1,
 };
 
+/**
+ * Medbay — passive healing aura. Restores `healHps` per second to every
+ * friendly Combatant (units, ships, AND structures including walls)
+ * within `healRange`, capped at each target's maxHp. Per-target rate is
+ * fixed; total throughput scales with how many things in the aura need
+ * healing. Two per player, so a sprawling base can be covered by two
+ * overlapping zones.
+ *
+ * Doesn't outpace dedicated DPS (96 turret DPS vs 25 heal/sec is a
+ * losing trade on any single target) but meaningfully sustains a wall
+ * ring and a unit swarm together — enough that throwing a few rammers
+ * at a defended base no longer chips through unchallenged.
+ */
+export const MEDBAY: StructureKindMeta = {
+  cost: 16,
+  hp: 80,
+  halfExtent: 30,
+  supplyContribution: 0,
+  maxPerPlayer: 2,
+  healHps: 25,
+  healRange: 320,
+};
+
 export const STRUCTURE_KIND_META: Record<string, StructureKindMeta> = {
   base: BASE,
   supply: SUPPLY,
   turret: TURRET,
   wall: WALL,
+  medbay: MEDBAY,
 };
 
 export type StructureKindName = keyof typeof STRUCTURE_KIND_META;

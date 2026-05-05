@@ -12,6 +12,7 @@
     { kind: "supply", label: "Supply", hotkey: "W" },
     { kind: "turret", label: "Turret", hotkey: "E" },
     { kind: "wall", label: "Wall", hotkey: "R" },
+    { kind: "medbay", label: "Medbay", hotkey: "T" },
   ];
   const UNIT_CARDS = [
     { kind: "rammer", label: "Rammer", hotkey: "A" },
