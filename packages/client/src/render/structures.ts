@@ -26,6 +26,11 @@ export interface CreateStructureViewOptions {
   /** Include the HP bar above the structure. Defaults to true; pass false
    *  for icon snapshots so an empty bar doesn't show. */
   bars?: boolean;
+  /** Include in-world decorations (e.g. base claim ring) that wouldn't
+   *  fit in an HUD icon. Defaults to true; pass false when generating
+   *  build-card icons so the icon auto-fit doesn't shrink the actual
+   *  structure shape down to a speck inside a 1200u-diameter ring. */
+  decorations?: boolean;
 }
 
 export function createStructureView(
@@ -34,6 +39,7 @@ export function createStructureView(
   opts: CreateStructureViewOptions = {},
 ): StructureView {
   const bars = opts.bars !== false;
+  const decorations = opts.decorations !== false;
   const container = new Container();
   let setRotation: (r: number) => void = () => {};
   let visualSize = SIZE;
@@ -50,7 +56,7 @@ export function createStructureView(
       break;
     }
     case "base": {
-      buildBase(container, color);
+      buildBase(container, color, decorations);
       break;
     }
     case "medbay": {
@@ -221,7 +227,7 @@ function buildWall(container: Container, color: string, size: number) {
  * the center. Distinct silhouette from turret (chamfered octagon with a
  * barrel) and supply (crate stacks). No rotation.
  */
-function buildBase(container: Container, color: string) {
+function buildBase(container: Container, color: string, decorations: boolean) {
   const tint = parseHexColor(color);
   const half = SIZE / 2;
   const hullInset = half * 0.85;
@@ -230,12 +236,16 @@ function buildBase(container: Container, color: string) {
   // Territorial claim outline — faint owner-tinted ring so the player
   // can see how far this base's no-enemy-build zone reaches. Drawn
   // FIRST so the base hull sits on top; sized to BASE_CLAIM_RADIUS_U
-  // so it tracks any future tuning of the claim radius.
-  const claim = new Graphics();
-  claim
-    .circle(0, 0, BASE_CLAIM_RADIUS_U)
-    .stroke({ color: lighten(tint, 0.2), width: 2, alpha: 0.3 });
-  container.addChild(claim);
+  // so it tracks any future tuning of the claim radius. Skipped in
+  // icon mode (decorations: false) — otherwise the icon's auto-fit
+  // would shrink the base hull to a speck inside the 1200u ring.
+  if (decorations) {
+    const claim = new Graphics();
+    claim
+      .circle(0, 0, BASE_CLAIM_RADIUS_U)
+      .stroke({ color: lighten(tint, 0.2), width: 2, alpha: 0.3 });
+    container.addChild(claim);
+  }
 
   // Main hull — thick square base. Slightly inset from cell edge so the
   // corner bastions read as separate structural elements.

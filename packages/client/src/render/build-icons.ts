@@ -26,7 +26,12 @@ export function generateBuildIcons(app: Application): Map<string, HTMLCanvasElem
     icons.set(kind, snapshot(app, view.container));
   }
   for (const kind of Object.keys(STRUCTURE_KIND_META)) {
-    const view = createStructureView(kind, ICON_TINT, { bars: false });
+    // decorations: false strips in-world extras (base claim ring) that
+    // would dominate the auto-fit and shrink the actual structure shape.
+    const view = createStructureView(kind, ICON_TINT, {
+      bars: false,
+      decorations: false,
+    });
     icons.set(kind, snapshot(app, view.container));
   }
   return icons;
