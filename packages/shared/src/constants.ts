@@ -43,6 +43,13 @@ export const DASH_SPEED_MULTIPLIER = 2.0;
  *  dash remains the explicit "punch through your own swarm" escape valve.
  *  See `playerFleetDragFactor` in movement.ts. */
 export const PLAYER_FLEET_DRAG_FLOOR = 0.25;
+
+/** Fraction of an enemy structure's mineral cost paid out to the player
+ *  who landed the destroying hit. Floored to int (credits are uint32).
+ *  Symmetric counterpart to `STRUCTURE_RECYCLE_MAX_REFUND` — destroying
+ *  the enemy's stuff yields the same kind of partial scrap value as
+ *  reclaiming your own. */
+export const STRUCTURE_KILL_BOUNTY_FRAC = 0.5;
 /** HP per second drained from EVERY owned unit while the player is dashing.
  *  Engine wash — gives the ship raw speed at the cost of cooking the fleet
  *  trailing behind. At ~12/sec, a 30 HP rammer pops in ~2.5s of held thrust. */
