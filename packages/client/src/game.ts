@@ -658,6 +658,9 @@ const EMOTE_GLYPHS: Record<EmoteKind, string> = {
   attack: "⚔️",
   truce: "🤝",
   thanks: "👍",
+  love: "❤️",
+  laugh: "😂",
+  cry: "😢",
   rip: "💀",
 };
 

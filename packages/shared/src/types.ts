@@ -67,13 +67,16 @@ export interface EmoteMessage {
 }
 
 /** Emote enum — the radial-menu choices. Keep this small + game-relevant
- *  so the UI fits 6 wedges and policing isn't needed. */
+ *  so the wheel stays readable and policing isn't needed. */
 export type EmoteKind =
   | "greet"
   | "help"
   | "attack"
   | "truce"
   | "thanks"
+  | "love"
+  | "laugh"
+  | "cry"
   | "rip";
 
 export const EMOTE_KINDS: readonly EmoteKind[] = [
@@ -82,6 +85,9 @@ export const EMOTE_KINDS: readonly EmoteKind[] = [
   "attack",
   "truce",
   "thanks",
+  "love",
+  "laugh",
+  "cry",
   "rip",
 ] as const;
 

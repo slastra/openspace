@@ -9,6 +9,9 @@
     attack: "⚔️",
     truce: "🤝",
     thanks: "👍",
+    love: "❤️",
+    laugh: "😂",
+    cry: "😢",
     rip: "💀",
   };
 

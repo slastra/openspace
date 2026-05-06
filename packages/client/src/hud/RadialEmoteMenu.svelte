@@ -12,6 +12,9 @@
     attack: { glyph: "⚔️", label: "Attack" },
     truce: { glyph: "🤝", label: "Truce" },
     thanks: { glyph: "👍", label: "Thanks" },
+    love: { glyph: "❤️", label: "Love" },
+    laugh: { glyph: "😂", label: "Laugh" },
+    cry: { glyph: "😢", label: "Cry" },
     rip: { glyph: "💀", label: "RIP" },
   };
 
