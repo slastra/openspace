@@ -20,12 +20,16 @@ import {
   Asteroid,
   BuildStructureMessage,
   CREDITS_PER_ASTEROID_HP,
+  DesignateTargetMessage,
   LeaderboardEntry,
   MAX_PLAYERS_PER_ROOM,
   MAX_STRUCTURES_PER_PLAYER,
   MAX_UNITS_PER_PLAYER,
   RecycleStructureMessage,
+  isNeutral,
+  lookupCombatant,
   structureRecycleRefund,
+  teamOf,
   PLAYER_COLORS,
   PLAYER_CONTACT_RADIUS,
   PLAYER_MAX_HP,
@@ -273,6 +277,36 @@ export class ArenaRoom extends Room<ArenaState> {
       const player = this.state.players.get(client.sessionId);
       if (!player) return;
       player.dashing = false;
+    });
+
+    this.onMessage<DesignateTargetMessage>("designate-target", (client, payload) => {
+      if (!payload || typeof payload.targetId !== "string") return;
+      const player = this.state.players.get(client.sessionId);
+      if (!player || player.hp <= 0) return;
+      // Empty string clears focus — same write path as a successful set,
+      // just unconditional.
+      if (payload.targetId === "") {
+        player.focusTargetId = "";
+        return;
+      }
+      // Try combatant first (player/unit/structure), then asteroid.
+      // Asteroids aren't in the Combatant union — separate map lookup.
+      const combatant = lookupCombatant(this.state, payload.targetId);
+      if (combatant) {
+        // Reject self-team (no friendly-fire focus) and neutral (orphan
+        // wreckage units). Repair drones still pick damaged friendlies
+        // automatically; this slot is for offense.
+        if (teamOf(combatant) === client.sessionId) return;
+        if (isNeutral(combatant)) return;
+        player.focusTargetId = payload.targetId;
+        return;
+      }
+      const asteroid = this.state.asteroids.get(payload.targetId);
+      if (asteroid && asteroid.hp > 0) {
+        player.focusTargetId = payload.targetId;
+        return;
+      }
+      // Unknown id — silently ignore (stale click during a fast respawn).
     });
 
     this.onMessage<EmoteMessage>("emote", (client, payload) => {

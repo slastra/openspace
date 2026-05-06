@@ -30,6 +30,8 @@ import { createBeam } from "./effects/beam.js";
 import { createBulletPop } from "./effects/bullet-pop.js";
 import { createEmoteBubble } from "./effects/emote-bubble.js";
 import { createExplosion } from "./effects/explosion.js";
+import { createTargetCrosshair, type TargetCrosshair } from "./effects/target-crosshair.js";
+import { parseHexColor } from "./render/colors.js";
 import { DebugOverlay } from "./debug/overlay.js";
 import { HealTetherLayer } from "./render/heal-tether.js";
 import { MiningParticleLayer } from "./render/mining-particles.js";
@@ -73,6 +75,13 @@ export function startGame({ renderer, input, net }: GameDeps) {
   // shows local owned counts.
   const localUnitCounts: Record<string, number> = {};
   const localStructureCounts: Record<string, number> = {};
+
+  // Local crosshair state: the most-recent focusTargetId we've rendered
+  // for, and the active crosshair effect tracking it. Updated only when
+  // server snapshots report a new focusTargetId, so we don't churn one
+  // effect per frame.
+  let lastFocusId = "";
+  let focusCrosshair: TargetCrosshair | null = null;
   let localUnitTotal = 0;
 
   // Effects layer lives in world space (above the entities) so explosions
@@ -222,6 +231,45 @@ export function startGame({ renderer, input, net }: GameDeps) {
     const rect = renderer.app.canvas.getBoundingClientRect();
     hud.emoteMenu = { x: rect.left + x, y: rect.top + y };
   });
+
+  /** Reconcile the active crosshair to the server's focusTargetId.
+   *  Called from each `onLocalUpdate` snapshot. Spawns a new crosshair
+   *  on focus change, requests fadeout on the prior one, and no-ops
+   *  when the id is unchanged. */
+  function syncFocusCrosshair(focusId: string, localColor: string) {
+    if (focusId === lastFocusId) return;
+    if (focusCrosshair) {
+      focusCrosshair.requestFadeOut();
+      focusCrosshair = null;
+    }
+    lastFocusId = focusId;
+    if (!focusId) return;
+    const radius = focusTargetRadius(focusId) * 1.5;
+    const color = parseHexColor(localColor);
+    const anchor = () => {
+      const a = asteroids.get(focusId);
+      if (a) return { x: a.view.container.x, y: a.view.container.y };
+      return resolveRenderedPosition(focusId, local, net.sessionId, remotes, units, structures);
+    };
+    focusCrosshair = createTargetCrosshair(anchor, radius, color);
+    effects.add(focusCrosshair);
+  }
+
+  /** Visual half-extent of the focused entity. Falls back to a default
+   *  when the entity isn't currently visible (target outside AOI), so
+   *  the ring still has a sensible size while we wait for the entity
+   *  stream to bring it back. */
+  function focusTargetRadius(id: string): number {
+    const u = units.get(id);
+    if (u) return UNIT_KIND_META[u.kind]?.contactRadius ?? 12;
+    const s = structures.get(id);
+    if (s) return STRUCTURE_KIND_META[s.kind]?.halfExtent ?? 30;
+    if (remotes.has(id)) return PLAYER_CONTACT_RADIUS;
+    const a = asteroids.get(id);
+    if (a) return a.radius;
+    return 24;
+  }
+
   input.onClick((sx, sy) => {
     const world = renderer.camera.screenToWorld(sx, sy);
     if (recycling) {
@@ -232,12 +280,19 @@ export function startGame({ renderer, input, net }: GameDeps) {
       }
       return;
     }
-    if (!placing) return;
-    const snapX = snapToGrid(world.x);
-    const snapY = snapToGrid(world.y);
-    if (!canPlace(placing, snapX, snapY, local, remotes, structures, net.sessionId)) return;
-    net.buildStructure(placing, world.x, world.y);
-    cancelModes();
+    if (placing) {
+      const snapX = snapToGrid(world.x);
+      const snapY = snapToGrid(world.y);
+      if (!canPlace(placing, snapX, snapY, local, remotes, structures, net.sessionId)) return;
+      net.buildStructure(placing, world.x, world.y);
+      cancelModes();
+      return;
+    }
+    // Default click: designate a focus target. Picks the topmost enemy
+    // entity (unit > structure > remote player) under the cursor, then
+    // falls through to asteroids. Empty pick clears the focus.
+    const picked = pickTarget(world.x, world.y, units, structures, remotes, asteroids, net.sessionId);
+    net.designateTarget(picked?.id ?? "");
   });
 
   net.setHandlers({
@@ -271,6 +326,7 @@ export function startGame({ renderer, input, net }: GameDeps) {
         local.ship.container.visible = true;
       }
       local.applyServerUpdate(snap);
+      syncFocusCrosshair(snap.focusTargetId, snap.color);
     },
     onRemoteAdd(snap) {
       updateOffset(snap.serverTime);
@@ -865,6 +921,64 @@ function pickOwnedStructure(
     const dx = s.view.container.x - x;
     const dy = s.view.container.y - y;
     if (dx * dx + dy * dy <= meta.halfExtent * meta.halfExtent) return s;
+  }
+  return null;
+}
+
+/** Slack on click radii — small units (~9u) are hard to nail at zoom-out,
+ *  so each candidate's hit radius is multiplied by this. */
+const PICK_PADDING = 1.4;
+
+/**
+ * Pick a click target for designation. Iterates enemy units → enemy
+ * structures → remote players → asteroids and returns the first hit.
+ * Friendly entities (own units / structures / self) are skipped — server
+ * would reject them anyway, so we don't bother sending. Returns null
+ * when the click hit nothing pickable.
+ */
+function pickTarget(
+  x: number,
+  y: number,
+  units: Map<string, Unit>,
+  structures: Map<string, Structure>,
+  remotes: Map<string, RemotePlayer>,
+  asteroids: Map<string, Asteroid>,
+  ownerId: string,
+): { id: string } | null {
+  // Enemy units first — small + numerous, want them most pickable.
+  for (const u of units.values()) {
+    if (u.ownerId === ownerId) continue;
+    const meta = UNIT_KIND_META[u.kind];
+    if (!meta) continue;
+    const r = meta.contactRadius * PICK_PADDING;
+    const dx = u.view.container.x - x;
+    const dy = u.view.container.y - y;
+    if (dx * dx + dy * dy <= r * r) return { id: u.id };
+  }
+  // Enemy structures — turrets, walls, bases, etc.
+  for (const s of structures.values()) {
+    if (s.ownerId === ownerId) continue;
+    const meta = STRUCTURE_KIND_META[s.kind];
+    if (!meta) continue;
+    const r = meta.halfExtent * PICK_PADDING;
+    const dx = s.view.container.x - x;
+    const dy = s.view.container.y - y;
+    if (dx * dx + dy * dy <= r * r) return { id: s.id };
+  }
+  // Remote player ships (any non-self).
+  for (const r of remotes.values()) {
+    const rad = PLAYER_CONTACT_RADIUS * PICK_PADDING;
+    const dx = r.renderedX - x;
+    const dy = r.renderedY - y;
+    if (dx * dx + dy * dy <= rad * rad) return { id: r.id };
+  }
+  // Asteroids last — large rocks otherwise eat clicks meant for the
+  // turret sitting on them.
+  for (const a of asteroids.values()) {
+    const r = a.radius * PICK_PADDING;
+    const dx = a.view.container.x - x;
+    const dy = a.view.container.y - y;
+    if (dx * dx + dy * dy <= r * r) return { id: a.id };
   }
   return null;
 }

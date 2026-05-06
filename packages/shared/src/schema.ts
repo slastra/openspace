@@ -39,6 +39,12 @@ export class Player extends Schema {
    *  player a window to drop a base / get oriented without being insta-
    *  killed. Zero ⇒ not invulnerable. */
   declare invulnerableUntil: number;
+  /** Optional focus-target id (combatant or asteroid) the player has
+   *  click-designated. Owned attack units pursue this target across the
+   *  map; owned miners pursue it if it's an asteroid. Empty string ⇒
+   *  no focus, units fall back to auto-acquire. Cleared on death and
+   *  per-tick when the referenced entity no longer exists. */
+  declare focusTargetId: string;
 
   constructor() {
     super();
@@ -62,6 +68,7 @@ export class Player extends Schema {
     this.supplyUsed = 0;
     this.dashing = false;
     this.invulnerableUntil = 0;
+    this.focusTargetId = "";
   }
 }
 
@@ -89,6 +96,7 @@ defineTypes(Player, {
   supplyUsed: "uint16",
   dashing: "boolean",
   invulnerableUntil: "number",
+  focusTargetId: "string",
 });
 
 /**

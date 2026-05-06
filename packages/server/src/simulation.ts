@@ -1449,6 +1449,11 @@ function cullAndRespawn(
       lastAttackerByVictim.delete(id);
       player.supplyUsed = 0;
       player.dashing = false;
+      // Clear designated focus so respawn starts on auto-acquire — the
+      // target the player chose pre-death is almost certainly no longer
+      // relevant (and even if alive, units freshly orphaned have no
+      // owner to read focus from until the player respawns).
+      player.focusTargetId = "";
     }
 
     if (!pendingRespawnSet.has(id)) continue;
@@ -1486,6 +1491,19 @@ function cullAndRespawn(
       if (s.ownerId === id && s.kind === "supply") supplyOwned++;
     }
     player.credits = STARTING_CREDITS + supplyOwned;
+  }
+
+  // Stale-focus sweep: a designated target may have died, been
+  // recycled, or mined out this tick. Once its id no longer resolves to
+  // anything, drop the focus so client UI and behavior fall back to
+  // auto-acquire on the next AI pass. Cheap — N players × O(1) lookup.
+  for (const player of state.players.values()) {
+    if (!player.focusTargetId) continue;
+    const combatant = lookupCombatant(state, player.focusTargetId);
+    if (combatant && combatant.hp > 0 && !isNeutral(combatant)) continue;
+    const asteroid = state.asteroids.get(player.focusTargetId);
+    if (asteroid && asteroid.hp > 0) continue;
+    player.focusTargetId = "";
   }
 
   return { culledAsteroidIds, events: ctx.pendingEvents };

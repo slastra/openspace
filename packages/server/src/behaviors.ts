@@ -1,5 +1,6 @@
 import {
   ArenaState,
+  Asteroid,
   Combatant,
   Player,
   SlotInfo,
@@ -45,6 +46,34 @@ export interface KindBehavior {
   ): { vx: number; vy: number };
 }
 
+/**
+ * Owner-designated focus target (combatant). When set, attack-kind
+ * `acquireTarget` returns this directly — bypassing release/aggro radii
+ * — so a click order pulls the swarm across the map. Returns null when
+ * unset, dead, neutral (orphaned wreckage), or on the same team as the
+ * unit (defense against self-team focus snuck through validation).
+ */
+function focusTargetFor(unit: Unit, state: ArenaState): Combatant | null {
+  const owner = state.players.get(unit.ownerId);
+  if (!owner || !owner.focusTargetId) return null;
+  const t = lookupCombatant(state, owner.focusTargetId);
+  if (!t || t.hp <= 0 || isNeutral(t)) return null;
+  if (teamOf(t) === teamOf(unit)) return null;
+  return t;
+}
+
+/**
+ * Owner-designated focus asteroid (miners only). Same idea as
+ * `focusTargetFor` but resolves into the asteroid map instead of the
+ * combatant union.
+ */
+function focusAsteroidFor(unit: Unit, state: ArenaState): Asteroid | null {
+  const owner = state.players.get(unit.ownerId);
+  if (!owner || !owner.focusTargetId) return null;
+  const a = state.asteroids.get(owner.focusTargetId);
+  return a && a.hp > 0 ? a : null;
+}
+
 /** Sticky nearest-enemy targeting — most attack kinds reuse this. */
 export function defaultAcquireTarget(
   unit: Unit,
@@ -52,6 +81,12 @@ export function defaultAcquireTarget(
   meta: UnitKindMeta,
   grids: TickGrids,
 ): Combatant | null {
+  // Player click-order: explicit focus beats auto-acquire and ignores
+  // aggro/release radii. Falls through to sticky-nearest when the
+  // owner has no focus or the focus is invalid for this unit's team.
+  const focus = focusTargetFor(unit, state);
+  if (focus) return focus;
+
   if (unit.targetId) {
     const t = state.players.get(unit.targetId) ?? state.units.get(unit.targetId);
     // isNeutral guard: when the held target was a unit whose owner died,
@@ -280,6 +315,10 @@ const REPAIR_BEHAVIOR: KindBehavior = {
 const MINER: KindBehavior = {
   acquireTarget(unit, state, meta, grids) {
     const range = meta.miningRange ?? meta.aggroRadius;
+    // Player click-order: explicit focus on an asteroid beats nearest-
+    // rock pick, with no range cap so miners pursue a far-edge target.
+    const focus = focusAsteroidFor(unit, state);
+    if (focus) return focus as unknown as Combatant;
     if (unit.targetId) {
       const held = state.asteroids.get(unit.targetId);
       if (held && held.hp > 0 && Math.hypot(held.x - unit.x, held.y - unit.y) <= range) {

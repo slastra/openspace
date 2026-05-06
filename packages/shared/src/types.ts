@@ -21,6 +21,16 @@ export interface RecycleStructureMessage {
 }
 
 /**
+ * Click-to-designate focus target. The id is either a combatant
+ * (player/unit/structure) or an asteroid; empty string clears focus.
+ * Server validates ownership/team rules and writes through to
+ * `Player.focusTargetId`, where unit AI overrides auto-acquire to pursue.
+ */
+export interface DesignateTargetMessage {
+  targetId: string;
+}
+
+/**
  * Event broadcast from server to clients via Colyseus message channel
  * (NOT schema state — these are one-shot, transient, no persistence).
  * Drives the top-center toast feed and (for emotes) the world-space

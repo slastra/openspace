@@ -24,6 +24,7 @@ the cursor.
 | Key | Action |
 | --- | --- |
 | Mouse | Steer toward cursor |
+| **Left-click** | Designate focus target — owned attack units pursue and fire on the picked enemy / miners pursue the picked asteroid. Click empty space to clear. |
 | **Space** (hold) | Recall fleet + sustained dash — burns your own units while held |
 | **A / S / D / F / G / H** | Spawn rammer / miner / gunner / laser / repair / shielder |
 | **Q / W / E / R / T** | Toggle base / supply / turret / wall / medbay placement (click to place) |
@@ -132,6 +133,13 @@ packages/client/
   units don't keep half the map locked on them). Behaviors: ram,
   kite-and-shoot (hitscan laser, ballistic gunner), repair beam, shield
   aura, mine.
+- **Manual focus targeting** layered on top: left-click an enemy or
+  asteroid to set `Player.focusTargetId`. Owned attack units (rammer,
+  gunner, laser) pursue that target across the map regardless of
+  aggro/release radii; miners pursue a focused asteroid the same way.
+  A pulsing crosshair tinted to the player's color marks the chosen
+  target. Server clears focus on death and per-tick when the target
+  no longer resolves.
 - Per-player **supply cap** from depots. Excess units flip to a
   deactivated state and inertly orbit until cap returns.
 - **Base** (Q, free, max 1) gates all unit production and projects a

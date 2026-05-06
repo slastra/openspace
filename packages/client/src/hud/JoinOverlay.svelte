@@ -25,6 +25,7 @@
   // controls a new player needs before their first match.
   const MOVE_KEYS: ReadonlyArray<readonly [string, string]> = [
     ["Mouse", "Steer"],
+    ["Click", "Designate target"],
     ["Space (hold)", "Recall + dash"],
     ["Right-drag", "Emote wheel"],
     ["X", "Recycle structure"],

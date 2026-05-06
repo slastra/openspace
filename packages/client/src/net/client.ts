@@ -4,6 +4,7 @@ import {
   ArenaState,
   Asteroid,
   BuildStructureMessage,
+  DesignateTargetMessage,
   EmoteKind,
   EmoteMessage,
   GameEvent,
@@ -47,6 +48,9 @@ export interface PlayerSnapshot {
    *  Compare against `serverTime` to decide whether the spawn-invuln
    *  visual should render. Zero ⇒ not invulnerable. */
   invulnerableUntil: number;
+  /** Player's click-designated focus target (combatant or asteroid id).
+   *  Empty string ⇒ no focus. Drives the local crosshair render. */
+  focusTargetId: string;
   /** Server's tick time when this state was sampled — use for jitter-free interpolation. */
   serverTime: number;
 }
@@ -188,6 +192,10 @@ export interface NetClient {
   respawn(): void;
   /** Drop every owned unit's chase target — they all return to formation. */
   recall(): void;
+  /** Set the player's click-designated focus target. Pass an empty string
+   *  to clear. Server validates ownership/team and writes through to
+   *  `Player.focusTargetId`, which unit AI overrides auto-acquire on. */
+  designateTarget(targetId: string): void;
   /** Send an emote — server validates the enum, rate-limits, then
    *  broadcasts an EmoteEvent that all clients render as a toast and
    *  (when the sender is in their AOI) a world-space bubble. */
@@ -340,6 +348,10 @@ export async function connectToArena(opts: ConnectOptions = {}): Promise<NetClie
     recall() {
       room.send("recall");
     },
+    designateTarget(targetId) {
+      const msg: DesignateTargetMessage = { targetId };
+      room.send("designate-target", msg);
+    },
     emote(kind) {
       const msg: EmoteMessage = { emote: kind };
       room.send("emote", msg);
@@ -380,6 +392,7 @@ function toPlayerSnapshot(p: Player, serverTime: number): PlayerSnapshot {
     supplyUsed: p.supplyUsed,
     dashing: p.dashing,
     invulnerableUntil: p.invulnerableUntil,
+    focusTargetId: p.focusTargetId,
     serverTime,
   };
 }
