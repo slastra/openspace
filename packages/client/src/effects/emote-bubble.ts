@@ -6,8 +6,11 @@ const DURATION = 2.0;
 const POP_IN_SECONDS = 0.2;
 /** Last N seconds: float-fade-grow exit (scale 1.0 -> 1.3, alpha 1 -> 0). */
 const FADE_OUT_SECONDS = 0.5;
-/** Vertical offset above the ship's center the bubble base sits at. */
-const VERTICAL_OFFSET = 28;
+/** Vertical offset above the ship's center the bubble base sits at.
+ *  Sized to clear the HP/shield bars (which sit at ~-20..-25u above
+ *  ship center) plus the bubble glyph's own ~11u upward extent at
+ *  its anchored center, giving ~10u of visible gap. */
+const VERTICAL_OFFSET = 48;
 /** How much further the bubble drifts upward over the fade-out phase. */
 const FLOAT_RISE = 30;
 /** Slight overshoot during pop-in for the "punch" feel — peaks at this
