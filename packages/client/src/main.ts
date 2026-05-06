@@ -32,6 +32,10 @@ async function main() {
   const input = createInput(renderer.app);
 
   const name = await promptForName(joinRoot);
+  // Reveal the game canvas only after the player has committed a name —
+  // the join overlay is now down, so the world (asteroids, spawn bubble,
+  // grid) is theirs to look at.
+  host.style.visibility = "visible";
 
   const net = await connectToArena({ name }).catch((err) => {
     hud.status = `failed to join: ${(err as Error).message}`;

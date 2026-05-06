@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { EMOTE_KINDS, EmoteKind } from "@openspace/shared";
+  import { EMOTE_KINDS, type EmoteKind } from "@openspace/shared";
   import { hud } from "./hudState.svelte.js";
 
   let { onEmote }: { onEmote: (kind: EmoteKind) => void } = $props();

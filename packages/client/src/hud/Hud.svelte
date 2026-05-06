@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { EmoteKind } from "@openspace/shared";
+  import type { EmoteKind } from "@openspace/shared";
   import StatsPanel from "./StatsPanel.svelte";
   import PlayerList from "./PlayerList.svelte";
   import BuildHud from "./BuildHud.svelte";
