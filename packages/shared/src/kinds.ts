@@ -67,7 +67,7 @@ export interface UnitKindMeta {
 }
 
 export const RAMMER: UnitKindMeta = {
-  cost: 6,
+  cost: 2,
   supplyCost: 1,
   maxHp: 30,
   maxShield: 0,
