@@ -8,7 +8,7 @@ import {
   WORLD_HEIGHT,
   WORLD_WIDTH,
 } from "./constants.js";
-import { clamp } from "./math.js";
+import { clamp, clamp01, lerp } from "./math.js";
 import type { PlayerInput } from "./types.js";
 
 /**
@@ -20,8 +20,7 @@ import type { PlayerInput } from "./types.js";
  * so prediction stays aligned without re-deriving on the client.
  */
 export function playerFleetDragFactor(ownedUnitCount: number): number {
-  const t = Math.min(1, Math.max(0, ownedUnitCount / MAX_UNITS_PER_PLAYER));
-  return 1 - (1 - PLAYER_FLEET_DRAG_FLOOR) * t;
+  return lerp(1, PLAYER_FLEET_DRAG_FLOOR, clamp01(ownedUnitCount / MAX_UNITS_PER_PLAYER));
 }
 
 export interface PlayerKinematics {

@@ -1,21 +1,14 @@
 import type { BuildInfo } from "@openspace/shared";
 
 const DEFAULT_INTERVAL_MS = 1500;
-/** Server is allowed to take this long to come back before we slow the
- *  poll cadence — Coolify deploys typically resolve well under this. */
 const SLOW_POLL_AFTER_MS = 30_000;
 const SLOW_INTERVAL_MS = 4000;
 
 /**
- * Repeatedly fetch `/build-info` until the server responds. Calls
- * `onResult` with the parsed BuildInfo on the first successful fetch
- * and then stops. Aborts immediately if the returned `stop` function
- * is invoked.
- *
- * Polling is gentle on purpose: a 1.5s interval (slowing to 4s after
- * the first 30 seconds of failure) keeps the server log readable
- * across a fleet of stuck-open browser tabs while still feeling
- * responsive to a normal redeploy.
+ * Repeatedly fetch `/build-info` until the server responds, then call
+ * `onResult` once with the parsed payload. The 1.5s → 4s backoff after
+ * 30s of failure keeps the server log readable when many stuck-open
+ * tabs poll across a slow Coolify deploy.
  */
 export function pollBuildInfo(onResult: (info: BuildInfo) => void): () => void {
   const startedAt = performance.now();

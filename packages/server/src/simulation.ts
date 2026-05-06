@@ -15,7 +15,7 @@ import {
   PlayerInput,
   Projectile,
   STARTING_CREDITS,
-  STRUCTURE_KILL_BOUNTY_FRAC,
+  structureKillBounty,
   TICK_DT,
   WORLD_HEIGHT,
   WORLD_WIDTH,
@@ -800,10 +800,8 @@ function damage(
   // record for the next time they actually die.
   if (isInvulnerable(victim, now)) return;
   applyDamage(victim, amount);
-  // Attribute the damage so cullAndRespawn / structure-bounty can pay
-  // out the kill on death. Players track for their respawn wreckage;
-  // structures track to award the destroyer a fraction of the build
-  // cost (see STRUCTURE_KILL_BOUNTY_FRAC).
+  // Players track for the kill-toast + bounty on respawn wreckage,
+  // structures for the kill-bounty refund (see structureKillBounty).
   if (attackerId && (isPlayer(victim) || isStructure(victim))) {
     ctx.lastAttackerByVictim.set(victim.id, attackerId);
   }
@@ -1385,13 +1383,11 @@ function cullAndRespawn(
         owner.supplyCap = Math.max(0, owner.supplyCap - meta.supplyContribution);
       }
     }
-    // Bounty: pay the destroying player a fraction of the build cost.
-    // Skip self-destruction (own units AOE-killing your own structure)
-    // — only enemy kills count. Recycling has its own refund path
-    // (`structureRecycleRefund`) and never goes through this loop.
+    // Recycling uses structureRecycleRefund and never reaches this
+    // loop; this path is enemy-kill bounties only.
     const attackerId = lastAttackerByVictim.get(id);
     if (attackerId && meta && attackerId !== s.ownerId) {
-      const reward = Math.floor(meta.cost * STRUCTURE_KILL_BOUNTY_FRAC);
+      const reward = structureKillBounty(meta.cost);
       if (reward > 0) {
         const attacker = state.players.get(attackerId);
         if (attacker) attacker.credits += reward;

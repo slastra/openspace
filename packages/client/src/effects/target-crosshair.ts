@@ -1,17 +1,13 @@
 import { Container, Graphics } from "pixi.js";
 import type { Effect } from "./manager.js";
 
-/** Time for the crosshair to fade in on first appearance. */
 const FADE_IN_SECONDS = 0.18;
-/** Time the crosshair takes to fade out after `requestFadeOut()` or
- *  after the anchor goes null permanently (target gone). */
 const FADE_OUT_SECONDS = 0.35;
-/** If anchor has been null this long without recovering, treat the
- *  target as gone and start the fade. Anchor briefly returns null
- *  while AOI streams a re-add — the grace period rides those out. */
+/** Anchor briefly returns null while AOI streams a target re-add. The
+ *  grace period rides those out so a transient null doesn't trigger
+ *  a permanent fade. */
 const ANCHOR_LOST_GRACE_SECONDS = 0.4;
-/** Pulse period for the breathing radius/alpha animation, seconds. */
-const PULSE_PERIOD = 1.0;
+const PULSE_PERIOD_SECONDS = 1.0;
 
 /** Returned by `createTargetCrosshair` so the caller can cancel mid-life. */
 export interface TargetCrosshair extends Effect {
@@ -49,13 +45,15 @@ export function createTargetCrosshair(
   let fadeOutAt: number | null = null;
   let anchorLostFor = 0;
 
-  const drawRing = (r: number) => {
-    ring.clear();
-    ring.circle(0, 0, r).stroke({ width: 1.5, color, alpha: 0.85 });
-    // Four short axis ticks just outside the ring — a classic
-    // reticle silhouette that reads at any zoom.
-    const tickIn = r * 0.95;
-    const tickOut = r * 1.18;
+  // The ring's geometry is fixed at construction — radius doesn't change
+  // frame-to-frame. Build the Pixi Graphics once; per-frame work then is
+  // just transform + alpha mutation, no clear()/stroke()/circle() rebuild.
+  ring.circle(0, 0, radius).stroke({ width: 1.5, color, alpha: 0.85 });
+  // Four short axis ticks just outside the ring — a classic reticle
+  // silhouette that reads at any zoom.
+  {
+    const tickIn = radius * 0.95;
+    const tickOut = radius * 1.18;
     for (let i = 0; i < 4; i++) {
       const a = (i * Math.PI) / 2;
       const cx = Math.cos(a);
@@ -65,7 +63,7 @@ export function createTargetCrosshair(
         .lineTo(cx * tickOut, cy * tickOut)
         .stroke({ width: 1.5, color, alpha: 0.85 });
     }
-  };
+  }
 
   return {
     container,
@@ -90,26 +88,24 @@ export function createTargetCrosshair(
         }
       }
 
-      // Pulse: 0..1 sine eased so the ring "breathes."
-      const pulse = 0.5 + 0.5 * Math.sin((elapsed / PULSE_PERIOD) * Math.PI * 2);
-      const scale = 1 + 0.08 * pulse;
+      const pulse = 0.5 + 0.5 * Math.sin((elapsed / PULSE_PERIOD_SECONDS) * Math.PI * 2);
+      const steadyAlpha = 0.55 + 0.35 * pulse;
 
-      let alpha: number;
+      let envelope: number;
       if (fadeOutAt !== null) {
         const t = (elapsed - fadeOutAt) / FADE_OUT_SECONDS;
         if (t >= 1) return false;
-        alpha = (1 - t) * (0.55 + 0.35 * pulse);
+        envelope = 1 - t;
       } else if (elapsed < FADE_IN_SECONDS) {
-        alpha = (elapsed / FADE_IN_SECONDS) * (0.55 + 0.35 * pulse);
+        envelope = elapsed / FADE_IN_SECONDS;
       } else {
-        alpha = 0.55 + 0.35 * pulse;
+        envelope = 1;
       }
 
-      drawRing(radius);
       container.x = lastX;
       container.y = lastY;
-      container.scale.set(scale);
-      container.alpha = alpha;
+      container.scale.set(1 + 0.08 * pulse);
+      container.alpha = steadyAlpha * envelope;
       return true;
     },
   };

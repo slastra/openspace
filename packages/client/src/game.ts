@@ -85,6 +85,10 @@ export function startGame({ renderer, input, net }: GameDeps) {
   // effect per frame.
   let lastFocusId = "";
   let focusCrosshair: TargetCrosshair | null = null;
+  /** Crosshair half-extent when the focused entity isn't currently
+   *  visible (out of AOI). Sized for "small ship" so the ring still
+   *  reads as a target marker until the real radius comes back. */
+  const FOCUS_FALLBACK_RADIUS = 24;
   let localUnitTotal = 0;
 
   // Effects layer lives in world space (above the entities) so explosions
@@ -264,13 +268,13 @@ export function startGame({ renderer, input, net }: GameDeps) {
    *  stream to bring it back. */
   function focusTargetRadius(id: string): number {
     const u = units.get(id);
-    if (u) return UNIT_KIND_META[u.kind]?.contactRadius ?? 12;
+    if (u) return UNIT_KIND_META[u.kind]?.contactRadius ?? 9;
     const s = structures.get(id);
     if (s) return STRUCTURE_KIND_META[s.kind]?.halfExtent ?? 30;
     if (remotes.has(id)) return PLAYER_CONTACT_RADIUS;
     const a = asteroids.get(id);
     if (a) return a.radius;
-    return 24;
+    return FOCUS_FALLBACK_RADIUS;
   }
 
   input.onClick((sx, sy) => {

@@ -15,27 +15,15 @@
   // player hasn't tapped Stay. Restarts on every transition into the
   // update-available state.
   $effect(() => {
-    if (hud.connectionState !== "update-available" || !countdownActive) {
-      if (countdownTimer !== null) {
-        clearInterval(countdownTimer);
-        countdownTimer = null;
-      }
-      return;
-    }
+    if (hud.connectionState !== "update-available" || !countdownActive) return;
     countdown = COUNTDOWN_SECONDS;
     countdownTimer = setInterval(() => {
       countdown -= 1;
-      if (countdown <= 0) {
-        if (countdownTimer !== null) clearInterval(countdownTimer);
-        countdownTimer = null;
-        location.reload();
-      }
+      if (countdown <= 0) location.reload();
     }, 1000);
     return () => {
-      if (countdownTimer !== null) {
-        clearInterval(countdownTimer);
-        countdownTimer = null;
-      }
+      if (countdownTimer !== null) clearInterval(countdownTimer);
+      countdownTimer = null;
     };
   });
 

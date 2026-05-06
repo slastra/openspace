@@ -1,4 +1,4 @@
-import { STRUCTURE_GRID_SNAP } from "./constants.js";
+import { STRUCTURE_GRID_SNAP, STRUCTURE_KILL_BOUNTY_FRAC } from "./constants.js";
 
 /**
  * Per-kind stats for player-built structures. Mirrors the unit-kind pattern
@@ -155,4 +155,12 @@ export const STRUCTURE_RECYCLE_MAX_REFUND = 0.75;
 export function structureRecycleRefund(cost: number, hpFraction: number): number {
   const f = hpFraction < 0 ? 0 : hpFraction > 1 ? 1 : hpFraction;
   return Math.floor(cost * STRUCTURE_RECYCLE_MAX_REFUND * f);
+}
+
+/** Credits awarded to whoever lands the killing blow on an enemy
+ *  structure. Symmetric counterpart to `structureRecycleRefund` —
+ *  destroying yields scrap value the same way reclaiming does, just
+ *  not HP-scaled (a structure at 1 HP is just as dead as one at full). */
+export function structureKillBounty(cost: number): number {
+  return Math.floor(cost * STRUCTURE_KILL_BOUNTY_FRAC);
 }
