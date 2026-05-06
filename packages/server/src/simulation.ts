@@ -587,10 +587,8 @@ function sampleVelocity(
 ) {
   const last = ctx.lastEntityPos.get(id);
   if (last) {
-    // Round to int — vx/vy are int16 on the wire; pre-rounding here means
-    // float jitter under ±0.5 u/s never dirties the schema field.
-    entity.vx = Math.round((newX - last.x) / TICK_DT);
-    entity.vy = Math.round((newY - last.y) / TICK_DT);
+    entity.vx = (newX - last.x) / TICK_DT;
+    entity.vy = (newY - last.y) / TICK_DT;
   } else {
     entity.vx = 0;
     entity.vy = 0;
@@ -615,10 +613,8 @@ function readBackPlayers(
     const newX = clamp(pos.x, 0, WORLD_WIDTH);
     const newY = clamp(pos.y, 0, WORLD_HEIGHT);
     sampleVelocity(ctx, sessionId, player.x, player.y, newX, newY, player);
-    // Round to int — x/y are int16 on the wire; rounding here keeps idle
-    // ships from dirtying every tick on Rapier's sub-unit float jitter.
-    player.x = Math.round(newX);
-    player.y = Math.round(newY);
+    player.x = newX;
+    player.y = newY;
     // Rotation is set in applyPlayerInputs from the desired (cursor) direction
     // — see the comment there for why we don't use actual velocity here.
   }
@@ -636,8 +632,8 @@ function readBackUnits(
     const newX = clamp(pos.x, 0, WORLD_WIDTH);
     const newY = clamp(pos.y, 0, WORLD_HEIGHT);
     sampleVelocity(ctx, unitId, unit.x, unit.y, newX, newY, unit);
-    unit.x = Math.round(newX);
-    unit.y = Math.round(newY);
+    unit.x = newX;
+    unit.y = newY;
 
     // Facing: aim at target if we have one (resolved across players, units,
     // and asteroids — miners face their rock). Else fall back to velocity

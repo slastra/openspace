@@ -78,17 +78,19 @@ export class Player extends Schema {
   }
 }
 
-// Position/velocity quantized to int16 — world is 12000² so values fit
-// comfortably in -32k..32k. Sub-unit precision is invisible visually and
-// cuts the per-snapshot wire bytes for moving entities by ~75% (8B → 2B).
+// Position/velocity as float32 — sub-unit precision matters for smooth
+// snapshot interpolation. int16 (whole-world-unit) was cheaper but
+// quantized slow drift to ±0.5u per snapshot, which read as 30Hz jitter
+// when remote ships were moving in formation or holding station. The
+// extra 8B per ship per snapshot is negligible at 15 players.
 defineTypes(Player, {
   id: "string",
   name: "string",
   kind: "string",
-  x: "int16",
-  y: "int16",
-  vx: "int16",
-  vy: "int16",
+  x: "float32",
+  y: "float32",
+  vx: "float32",
+  vy: "float32",
   rotation: "number",
   color: "string",
   hp: "uint16",
@@ -172,15 +174,17 @@ export class Unit extends Schema {
 // Color is dropped from the wire — clients derive unit color from
 // players.get(ownerId).color, saving ~7B per unit per snapshot. Cooldown
 // is also dropped: replaced by fireCount which only patches on fire,
-// not every tick decrement.
+// not every tick decrement. Position/velocity use float32 so slow
+// formation drift doesn't quantize to per-tick integer steps that the
+// client renders as visible jitter — see Player's defineTypes note.
 defineTypes(Unit, {
   id: "string",
   ownerId: "string",
   kind: "string",
-  x: "int16",
-  y: "int16",
-  vx: "int16",
-  vy: "int16",
+  x: "float32",
+  y: "float32",
+  vx: "float32",
+  vy: "float32",
   rotation: "number",
   hp: "uint16",
   maxHp: "uint16",
