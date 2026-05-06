@@ -38,6 +38,7 @@ import {
   isUnit,
   lookupCombatant,
   playerDesiredVelocity,
+  playerFleetDragFactor,
   shortestAngleDelta,
   stationTarget,
   teamOf,
@@ -224,7 +225,9 @@ function applyPlayerInputs(
     for (const input of queue) player.lastProcessedInputSeq = input.seq;
     queue.length = 0;
 
-    const speedMultiplier = player.dashing ? DASH_SPEED_MULTIPLIER : 1;
+    const dashMult = player.dashing ? DASH_SPEED_MULTIPLIER : 1;
+    const fleetMult = playerFleetDragFactor(player.ownedUnitCount);
+    const speedMultiplier = dashMult * fleetMult;
     const desired = playerDesiredVelocity(
       player.x,
       player.y,
@@ -1312,6 +1315,9 @@ function claimWreckages(
       u.wreckageId = "";
       const meta = UNIT_KIND_META[u.kind];
       if (meta) claimer.supplyUsed += meta.supplyCost;
+      // Each claimed unit re-counts toward the new captain's fleet drag —
+      // so claiming a fat wreckage stack instantly weighs you down.
+      claimer.ownedUnitCount++;
       // Refresh the unit's collision-group membership so it now passes
       // through the new owner's walls (and stops passing through the old
       // owner's, who is presumably dead at this point anyway).
@@ -1343,6 +1349,12 @@ function cullAndRespawn(
     const cost = UNIT_KIND_META[unit.kind]?.supplyCost ?? 0;
     if (owner && cost > 0) {
       owner.supplyUsed = Math.max(0, owner.supplyUsed - cost);
+    }
+    // Drop the captain's fleet-drag count only for units that were still
+    // genuinely owned at death — orphans (wreckageId set) were already
+    // accounted for when their original owner died.
+    if (owner && unit.wreckageId === "") {
+      owner.ownedUnitCount = Math.max(0, owner.ownedUnitCount - 1);
     }
     const ref = bodyRefs.get(id);
     if (ref) removeCombatantBody(phys, ref.body, ref.colliderHandle);
@@ -1448,6 +1460,9 @@ function cullAndRespawn(
       }
       lastAttackerByVictim.delete(id);
       player.supplyUsed = 0;
+      // Every owned unit just flipped to a wreckage orphan above, so the
+      // captain's fleet-drag count zeroes — respawn starts at full speed.
+      player.ownedUnitCount = 0;
       player.dashing = false;
       // Clear designated focus so respawn starts on auto-acquire — the
       // target the player chose pre-death is almost certainly no longer

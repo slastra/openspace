@@ -51,6 +51,10 @@ export interface PlayerSnapshot {
   /** Player's click-designated focus target (combatant or asteroid id).
    *  Empty string ⇒ no focus. Drives the local crosshair render. */
   focusTargetId: string;
+  /** Live owned-unit count (excludes wreckage orphans). The local
+   *  predictor reads this to compute the fleet-drag speed factor in
+   *  lockstep with the server. */
+  ownedUnitCount: number;
   /** Server's tick time when this state was sampled — use for jitter-free interpolation. */
   serverTime: number;
 }
@@ -393,6 +397,7 @@ function toPlayerSnapshot(p: Player, serverTime: number): PlayerSnapshot {
     dashing: p.dashing,
     invulnerableUntil: p.invulnerableUntil,
     focusTargetId: p.focusTargetId,
+    ownedUnitCount: p.ownedUnitCount,
     serverTime,
   };
 }

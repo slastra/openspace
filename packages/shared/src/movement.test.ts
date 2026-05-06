@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  MAX_UNITS_PER_PLAYER,
+  PLAYER_FLEET_DRAG_FLOOR,
   PLAYER_FULL_SPEED_DIST,
   PLAYER_INPUT_DEADZONE,
   PLAYER_SPEED,
@@ -7,9 +9,36 @@ import {
   WORLD_HEIGHT,
   WORLD_WIDTH,
 } from "./constants.js";
-import { playerDesiredVelocity, stepPlayer } from "./movement.js";
+import { playerDesiredVelocity, playerFleetDragFactor, stepPlayer } from "./movement.js";
 
 const start = () => ({ x: 100, y: 100, rotation: 0 });
+
+describe("playerFleetDragFactor", () => {
+  it("returns 1.0 with zero owned units", () => {
+    expect(playerFleetDragFactor(0)).toBe(1);
+  });
+  it("returns the floor at MAX_UNITS_PER_PLAYER", () => {
+    expect(playerFleetDragFactor(MAX_UNITS_PER_PLAYER)).toBeCloseTo(
+      PLAYER_FLEET_DRAG_FLOOR,
+      6,
+    );
+  });
+  it("interpolates linearly at the midpoint", () => {
+    const mid = MAX_UNITS_PER_PLAYER / 2;
+    expect(playerFleetDragFactor(mid)).toBeCloseTo(
+      1 - (1 - PLAYER_FLEET_DRAG_FLOOR) / 2,
+      6,
+    );
+  });
+  it("clamps to floor when above the cap", () => {
+    expect(playerFleetDragFactor(MAX_UNITS_PER_PLAYER + 1000)).toBe(
+      PLAYER_FLEET_DRAG_FLOOR,
+    );
+  });
+  it("clamps to 1.0 for negative inputs", () => {
+    expect(playerFleetDragFactor(-5)).toBe(1);
+  });
+});
 
 describe("playerDesiredVelocity", () => {
   it("returns zero inside the deadzone", () => {

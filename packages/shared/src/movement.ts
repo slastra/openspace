@@ -1,4 +1,6 @@
 import {
+  MAX_UNITS_PER_PLAYER,
+  PLAYER_FLEET_DRAG_FLOOR,
   PLAYER_FULL_SPEED_DIST,
   PLAYER_INPUT_DEADZONE,
   PLAYER_SPEED,
@@ -8,6 +10,19 @@ import {
 } from "./constants.js";
 import { clamp } from "./math.js";
 import type { PlayerInput } from "./types.js";
+
+/**
+ * Multiplicative speed factor the captain takes from their own fleet.
+ * Linear ramp from 1.0 at zero owned units to PLAYER_FLEET_DRAG_FLOOR at
+ * MAX_UNITS_PER_PLAYER, clamped on either side. Composes with the dash
+ * multiplier (`dash * fleet`) — server applies it in `applyPlayerInputs`
+ * and the client predictor reads the same field off the synced snapshot
+ * so prediction stays aligned without re-deriving on the client.
+ */
+export function playerFleetDragFactor(ownedUnitCount: number): number {
+  const t = Math.min(1, Math.max(0, ownedUnitCount / MAX_UNITS_PER_PLAYER));
+  return 1 - (1 - PLAYER_FLEET_DRAG_FLOOR) * t;
+}
 
 export interface PlayerKinematics {
   x: number;

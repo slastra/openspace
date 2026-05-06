@@ -25,6 +25,9 @@ export class LocalPlayer {
   supplyUsed: number;
   dashing: boolean;
   invulnerableUntil: number;
+  /** Live owned-unit count from the latest snapshot. Drives the local
+   *  predictor's fleet-drag speed factor in lockstep with the server. */
+  ownedUnitCount: number;
 
   constructor(snap: PlayerSnapshot, renderer: Renderer, getObstacles?: ObstacleProvider) {
     this.ship = createShipView();
@@ -50,6 +53,7 @@ export class LocalPlayer {
     this.supplyUsed = snap.supplyUsed;
     this.dashing = snap.dashing;
     this.invulnerableUntil = snap.invulnerableUntil;
+    this.ownedUnitCount = snap.ownedUnitCount;
   }
 
   applyServerUpdate(snap: PlayerSnapshot) {
@@ -65,6 +69,7 @@ export class LocalPlayer {
     this.supplyUsed = snap.supplyUsed;
     this.dashing = snap.dashing;
     this.invulnerableUntil = snap.invulnerableUntil;
+    this.ownedUnitCount = snap.ownedUnitCount;
     this.prediction.onServerUpdate(
       snap.x,
       snap.y,

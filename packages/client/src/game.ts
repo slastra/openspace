@@ -10,6 +10,7 @@ import {
   UNIT_SPAWN_COOLDOWN_MS,
   StructureKindName,
   UNIT_KIND_META,
+  playerFleetDragFactor,
   snapToGrid,
 } from "@openspace/shared";
 import { Renderer } from "./render/renderer.js";
@@ -635,8 +636,12 @@ export function startGame({ renderer, input, net }: GameDeps) {
         // Local key state drives prediction immediately for snappy feel; the
         // schema's `dashing` mirror is updated by the server within a tick.
         // Both converge — prediction never disagrees with authority once the
-        // round-trip completes.
-        const speedMultiplier = dashHeld || local.dashing ? DASH_SPEED_MULTIPLIER : 1;
+        // round-trip completes. Fleet-drag uses the synced ownedUnitCount
+        // (server-authoritative, ~1 tick lag) so client + server agree on
+        // the speed factor and reconcile doesn't churn on big swarms.
+        const dashMult = dashHeld || local.dashing ? DASH_SPEED_MULTIPLIER : 1;
+        const fleetMult = playerFleetDragFactor(local.ownedUnitCount);
+        const speedMultiplier = dashMult * fleetMult;
         const stepped = local.step(dt, target, speedMultiplier, serverNow);
         for (const i of stepped.inputs) net.send(i);
         renderer.camera.setTarget(stepped.x, stepped.y);

@@ -45,6 +45,11 @@ export class Player extends Schema {
    *  no focus, units fall back to auto-acquire. Cleared on death and
    *  per-tick when the referenced entity no longer exists. */
   declare focusTargetId: string;
+  /** Live owned-unit count (excludes wreckage orphans). Maintained by
+   *  the server alongside `supplyUsed`. Drives `playerFleetDragFactor`
+   *  on both the server and the client predictor — synced so both
+   *  sides agree on the current speed multiplier without re-deriving. */
+  declare ownedUnitCount: number;
 
   constructor() {
     super();
@@ -69,6 +74,7 @@ export class Player extends Schema {
     this.dashing = false;
     this.invulnerableUntil = 0;
     this.focusTargetId = "";
+    this.ownedUnitCount = 0;
   }
 }
 
@@ -97,6 +103,7 @@ defineTypes(Player, {
   dashing: "boolean",
   invulnerableUntil: "number",
   focusTargetId: "string",
+  ownedUnitCount: "uint16",
 });
 
 /**

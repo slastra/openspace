@@ -348,6 +348,11 @@ export class ArenaRoom extends Room<ArenaState> {
     unit.targetId = "";
     unit.slotIndex = this.allocSlot(ownerId);
     this.state.units.set(unit.id, unit);
+    // Maintain ownedUnitCount alongside the supplyUsed bump at the
+    // call site. Drives the captain's fleet-drag speed factor on both
+    // server and client predictor (see playerFleetDragFactor).
+    const owner = this.state.players.get(ownerId);
+    if (owner) owner.ownedUnitCount++;
 
     const ref = addCombatantBody(this.physics, {
       entityId: unit.id,

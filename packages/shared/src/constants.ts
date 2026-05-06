@@ -37,6 +37,12 @@ export const VISION_RADIUS = 450;
 
 /** Speed multiplier applied to the player ship while sustained dash is held. */
 export const DASH_SPEED_MULTIPLIER = 2.0;
+/** Speed factor floor when the player owns the maximum allowed live units
+ *  (MAX_UNITS_PER_PLAYER). Linear ramp from 1.0 at zero owned units to this
+ *  value at the cap, applied multiplicatively on top of any dash boost so
+ *  dash remains the explicit "punch through your own swarm" escape valve.
+ *  See `playerFleetDragFactor` in movement.ts. */
+export const PLAYER_FLEET_DRAG_FLOOR = 0.25;
 /** HP per second drained from EVERY owned unit while the player is dashing.
  *  Engine wash — gives the ship raw speed at the cost of cooking the fleet
  *  trailing behind. At ~12/sec, a 30 HP rammer pops in ~2.5s of held thrust. */
