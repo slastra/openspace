@@ -5,6 +5,12 @@
   "type": "module",
   "description": "Physics-driven multiplayer space combat",
   "scripts": {
+    "prepare": "node scripts/gen-build-info.mjs",
+    "gen:build-info": "node scripts/gen-build-info.mjs",
+    "predev": "pnpm gen:build-info",
+    "prebuild": "pnpm gen:build-info",
+    "pretypecheck": "pnpm gen:build-info",
+    "pretest": "pnpm gen:build-info",
     "dev": "concurrently -n server,client -c cyan,magenta \"pnpm dev:server\" \"pnpm dev:client\"",
     "dev:server": "pnpm --filter @openspace/server dev",
     "dev:client": "pnpm --filter @openspace/client dev",

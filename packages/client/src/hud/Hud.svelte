@@ -8,6 +8,7 @@
   import DebugPanel from "./DebugPanel.svelte";
   import EventFeed from "./EventFeed.svelte";
   import RadialEmoteMenu from "./RadialEmoteMenu.svelte";
+  import ReconnectOverlay from "./ReconnectOverlay.svelte";
 
   let { onRespawn, onEmote }: {
     onRespawn: () => void;
@@ -23,3 +24,4 @@
 <DebugPanel />
 <RespawnOverlay {onRespawn} />
 <RadialEmoteMenu {onEmote} />
+<ReconnectOverlay />

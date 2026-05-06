@@ -1,4 +1,4 @@
-import type { StructureKindName } from "@openspace/shared";
+import type { BuildInfo, StructureKindName } from "@openspace/shared";
 
 /**
  * One row in the leaderboard panel. Pushed each frame from the game loop.
@@ -74,6 +74,16 @@ class HudState {
    *  fires onEmote on release if past dead zone. Cleared by the
    *  component itself on pointerup. */
   emoteMenu = $state<{ x: number; y: number } | null>(null);
+
+  /** Connection lifecycle, drives ReconnectOverlay:
+   *  - "connected": normal play, overlay hidden
+   *  - "reconnecting": ws closed, polling /build-info to detect server return
+   *  - "update-available": server is back with a different SHA — show
+   *    update modal with notes + countdown to refresh */
+  connectionState = $state<"connected" | "reconnecting" | "update-available">("connected");
+  /** The server's BuildInfo at the moment we detected a redeploy.
+   *  Populated only when `connectionState === "update-available"`. */
+  serverBuildInfo = $state<BuildInfo | null>(null);
 
   pushFeedEntry(entry: FeedEntryInput) {
     // Cast keeps the discriminated union intact — Omit on the union

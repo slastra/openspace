@@ -32,6 +32,8 @@ import { createEmoteBubble } from "./effects/emote-bubble.js";
 import { createExplosion } from "./effects/explosion.js";
 import { createTargetCrosshair, type TargetCrosshair } from "./effects/target-crosshair.js";
 import { parseHexColor } from "./render/colors.js";
+import { pollBuildInfo } from "./net/build-info-poll.js";
+import { BUILD_INFO } from "@openspace/shared";
 import { DebugOverlay } from "./debug/overlay.js";
 import { HealTetherLayer } from "./render/heal-tether.js";
 import { MiningParticleLayer } from "./render/mining-particles.js";
@@ -533,7 +535,26 @@ export function startGame({ renderer, input, net }: GameDeps) {
       wreckages.delete(id);
     },
     onDisconnect(code) {
-      hud.status = `disconnected (${code})`;
+      // Don't reuse the bottom-status text — the reconnect overlay
+      // owns the visual now. Keep `code` in the console for diagnostics.
+      console.warn("[client] disconnected", code);
+      // Hide the (now-stale) world canvas so the dimmed overlay sits
+      // over a clean background — same trick the join overlay uses.
+      const host = renderer.app.canvas.parentElement as HTMLElement | null;
+      if (host) host.style.visibility = "hidden";
+      hud.connectionState = "reconnecting";
+      pollBuildInfo((info) => {
+        if (info.sha === BUILD_INFO.sha) {
+          // Server is back on the same build — reload to drop into a
+          // fresh game (the old room is gone either way).
+          location.reload();
+          return;
+        }
+        // Server is on a NEW build — show release notes and let the
+        // overlay's countdown handle the eventual refresh.
+        hud.serverBuildInfo = info;
+        hud.connectionState = "update-available";
+      });
     },
     onError(code, message) {
       console.error("[room error]", code, message);

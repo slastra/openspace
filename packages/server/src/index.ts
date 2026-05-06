@@ -3,7 +3,7 @@ import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
 import { Server } from "colyseus";
 import { WebSocketTransport } from "@colyseus/ws-transport";
-import { ROOM_NAME, SERVER_PORT } from "@openspace/shared";
+import { BUILD_INFO, ROOM_NAME, SERVER_PORT } from "@openspace/shared";
 import { ArenaRoom } from "./rooms/ArenaRoom.js";
 
 const PORT = Number(process.env.PORT ?? SERVER_PORT);
@@ -37,12 +37,29 @@ async function tryServeFile(absPath: string): Promise<{ data: Buffer; type: stri
   }
 }
 
+// Pre-stringify BUILD_INFO once: it's invariant across the process
+// lifetime and the /build-info handler runs on every reconnect poll
+// from every disconnected client.
+const BUILD_INFO_JSON = JSON.stringify(BUILD_INFO);
+
 const httpServer = createServer(async (req, res) => {
   if (!req.url || req.method !== "GET") {
     res.writeHead(405).end();
     return;
   }
   const urlPath = decodeURIComponent((req.url.split("?")[0] ?? "/") || "/");
+  // Build-info probe: serves the embedded git SHA + recent commits as
+  // JSON. Clients hit this on disconnect to detect a redeploy and to
+  // fetch release notes for the update modal. no-store because the SHA
+  // is the very thing we need to be live.
+  if (urlPath === "/build-info") {
+    res.writeHead(200, {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+    });
+    res.end(BUILD_INFO_JSON);
+    return;
+  }
   // Block path traversal: normalize then ensure resolved path stays within CLIENT_DIST.
   const safe = normalize(urlPath).replace(/^[/\\]+/, "");
   const candidate = resolve(join(CLIENT_DIST, safe));
@@ -75,7 +92,9 @@ gameServer.define(ROOM_NAME, ArenaRoom);
 gameServer
   .listen(PORT)
   .then(() => {
-    console.log(`[server] listening on port ${PORT}, serving client from ${CLIENT_DIST}`);
+    console.log(
+      `[server] listening on port ${PORT}, build=${BUILD_INFO.sha}, serving client from ${CLIENT_DIST}`,
+    );
   })
   .catch((err) => {
     console.error("[server] failed to start", err);

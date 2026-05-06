@@ -9,6 +9,7 @@ export default tseslint.config(
       "**/build/**",
       "**/.vite/**",
       "**/.cache/**",
+      "scripts/**",
     ],
   },
   eslint.configs.recommended,

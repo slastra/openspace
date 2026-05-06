@@ -7,3 +7,5 @@ export * from "./kinds.js";
 export * from "./structures.js";
 export * from "./combat.js";
 export * from "./formation.js";
+export * from "./build-info.js";
+export { BUILD_INFO } from "./build-info.generated.js";
