@@ -372,22 +372,21 @@ function runUnitAI(state: ArenaState, bodyRefs: Map<string, BodyRef>, ctx: SimCo
     }
 
     // Dash override: while the owner is holding thrust, every unit drops
-    // its current task and rushes to its formation slot at full attackSpeed
-    // (no kind-specific kiting / arrival decel). Lets the swarm trail
-    // behind the dashing ship instead of getting left behind in formation.
+    // its current task and falls back to formation. Uses arriveAtStation
+    // (with arrival decel) so a unit reaching its slot settles instead
+    // of overshooting and oscillating across the station. Speed is
+    // intentionally `attackSpeed` (lower than formationSpeed for every
+    // kind) — formationSpeed for rammers is 600, EXACTLY equal to the
+    // dashing ship's speed, which puts the chase on a numeric knife
+    // edge: with the slot moving at the same speed as the unit's max,
+    // any tiny perturbation flips the unit between "ahead" and "behind"
+    // and the swarm visibly vibrates. attackSpeed keeps every kind
+    // strictly below the ship so they trail predictably.
     if (owner?.dashing) {
       unit.targetId = "";
       const station = stationTarget(owner.x, owner.y, slot, meta.contactRadius, phaseFor(owner.id));
-      const dx = station.x - unit.x;
-      const dy = station.y - unit.y;
-      const dist = Math.hypot(dx, dy);
-      let vx = 0;
-      let vy = 0;
-      if (dist >= 1) {
-        vx = (dx / dist) * meta.attackSpeed;
-        vy = (dy / dist) * meta.attackSpeed;
-      }
-      const adjusted = applySeparation(unit, { vx, vy }, ctx, meta);
+      const desired = arriveAtStation(unit.x, unit.y, station.x, station.y, meta.attackSpeed);
+      const adjusted = applySeparation(unit, desired, ctx, meta);
       setBodyVelocity(ref.body, adjusted.vx, adjusted.vy);
       continue;
     }
@@ -536,6 +535,18 @@ function applySeparation(
     sy += (dy / d) * strength;
   });
   if (sx === 0 && sy === 0) return desired;
+  // Cap the accumulator to unit magnitude. Without this, a unit with
+  // many same-team neighbors (a packed rammer swarm during dash) sees
+  // sx/sy grow with neighbor count and the blend explodes — boid push
+  // ends up rivaling or exceeding the unit's chase velocity, causing
+  // tick-to-tick lateral oscillation as the cluster reshuffles. With
+  // the cap, the cumulative push is always ≤ blend regardless of how
+  // crowded the neighborhood is.
+  const sLen = Math.hypot(sx, sy);
+  if (sLen > 1) {
+    sx /= sLen;
+    sy /= sLen;
+  }
   const blend = meta.attackSpeed * 0.6;
   return { vx: desired.vx + sx * blend, vy: desired.vy + sy * blend };
 }
