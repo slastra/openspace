@@ -80,6 +80,11 @@ export interface BodyOptions {
    *  the body pass through them. Omit for owner-less bodies — they get
    *  the default "collide with everything" group. */
   ownerBit?: number;
+  /** When set with `ownerBit`, also exclude same-owner pairs from
+   *  collision. Used for AI units so a dense swarm doesn't thrash the
+   *  solver. The body still collides with cross-team units, walls of
+   *  other owners, asteroids, and other-owner structures. */
+  passSameOwner?: boolean;
 }
 
 /**
@@ -105,6 +110,19 @@ function ownerMemberGroups(ownerBit: number): number {
   return makeGroups(1 << ownerBit, PLAYER_BITS_MASK);
 }
 
+/** Same as `ownerMemberGroups` but the filter ALSO excludes the body's
+ *  own owner bit, so two bodies built with this share-no-collision when
+ *  they belong to the same player. Used for AI units so dense same-team
+ *  swarms don't fight the solver — boid `applySeparation` handles
+ *  visible spacing instead. Cross-team unit pairs (different owner bits)
+ *  still collide. The owner ship keeps the standard `ownerMemberGroups`,
+ *  meaning it also stops bumping its own units — a side benefit
+ *  (gliding through own swarm) since the solver fights are the cause
+ *  of perceptible jitter when many rammers cluster. */
+function unitOwnerGroups(ownerBit: number): number {
+  return makeGroups(1 << ownerBit, PLAYER_BITS_MASK & ~(1 << ownerBit));
+}
+
 /** Wall filter excludes its owner's bit so the owner's units / ship pass
  *  through. Non-owner dynamic bodies have other membership bits and are
  *  still blocked. */
@@ -128,7 +146,11 @@ export function addCombatantBody(
   const body = phys.world.createRigidBody(bodyDesc);
 
   const groups =
-    opts.ownerBit !== undefined ? ownerMemberGroups(opts.ownerBit) : GROUPS_DEFAULT;
+    opts.ownerBit !== undefined
+      ? opts.passSameOwner
+        ? unitOwnerGroups(opts.ownerBit)
+        : ownerMemberGroups(opts.ownerBit)
+      : GROUPS_DEFAULT;
   const colliderDesc = RAPIER.ColliderDesc.ball(opts.radius)
     .setRestitution(opts.restitution ?? 0)
     .setFriction(0.0)
@@ -191,10 +213,13 @@ export function addStructureBody(
 }
 
 /**
- * Live-update a collider's owner bit. Used when a wreckage is claimed and
- * a transferred unit needs to start passing through its new owner's
- * walls (its membership bit must match the new owner). No-op if the
- * collider was destroyed between the lookup and the update.
+ * Live-update a unit collider's owner bit. Called from `claimWreckages`
+ * when a transferred unit needs to start passing through its new
+ * owner's walls AND share same-team passthrough with the new owner's
+ * other units. Always applies the unit-variant groups (filter excludes
+ * own owner bit) — only units use this entry point; ship colliders
+ * are created once at join and never re-bound. No-op if the collider
+ * was destroyed between the lookup and the update.
  */
 export function setColliderOwnerBit(
   phys: PhysicsWorld,
@@ -203,7 +228,7 @@ export function setColliderOwnerBit(
 ) {
   const collider = phys.world.getCollider(colliderHandle);
   if (!collider) return;
-  collider.setCollisionGroups(ownerMemberGroups(ownerBit));
+  collider.setCollisionGroups(unitOwnerGroups(ownerBit));
 }
 
 /**

@@ -360,6 +360,10 @@ export class ArenaRoom extends Room<ArenaState> {
       y,
       radius: meta.contactRadius,
       ownerBit: this.ownerBitBySession.get(ownerId),
+      // Same-team unit pairs share collision passthrough so dense
+      // formations don't fight the solver. Cross-team contacts (rammer
+      // detonation, mutual collision damage) keep the standard path.
+      passSameOwner: true,
     });
     this.bodyRefs.set(unit.id, ref);
   }
