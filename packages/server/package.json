@@ -21,6 +21,6 @@
     "@types/node": "^22.10.5",
     "colyseus.js": "^0.16.22",
     "tsx": "^4.23.15",
-    "typescript": "^5.7.2"
+    "typescript": "~6.0.3"
   }
 }
