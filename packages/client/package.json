@@ -11,14 +11,14 @@
   },
   "dependencies": {
     "@openspace/shared": "workspace:*",
-    "colyseus.js": "^0.16.4",
-    "pixi.js": "^8.6.6",
-    "svelte": "^5.55.5"
+    "colyseus.js": "^0.16.22",
+    "pixi.js": "^8.22.0",
+    "svelte": "^5.57.2"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5.1.1",
-    "svelte-check": "^4.4.7",
+    "svelte-check": "^4.7.7",
     "typescript": "^5.7.2",
-    "vite": "^6.0.7"
+    "vite": "^6.4.5"
   }
 }

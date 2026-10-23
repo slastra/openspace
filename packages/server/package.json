@@ -11,7 +11,7 @@
     "loadtest": "NODE_OPTIONS=--conditions=source tsx scripts/loadtest.ts"
   },
   "dependencies": {
-    "@colyseus/schema": "^3.0.39",
+    "@colyseus/schema": "^3.0.76",
     "@colyseus/ws-transport": "^0.16.4",
     "@dimforge/rapier2d-compat": "^0.14.0",
     "@openspace/shared": "workspace:*",
@@ -19,8 +19,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
-    "colyseus.js": "^0.16.4",
-    "tsx": "^4.19.2",
+    "colyseus.js": "^0.16.22",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.2"
   }
 }

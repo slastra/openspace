@@ -17,7 +17,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@colyseus/schema": "^3.0.39"
+    "@colyseus/schema": "^3.0.76"
   },
   "devDependencies": {
     "typescript": "^5.7.2"
