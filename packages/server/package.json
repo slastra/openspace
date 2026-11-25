@@ -18,7 +18,7 @@
     "colyseus": "^0.16.4"
   },
   "devDependencies": {
-    "@types/node": "^22.10.5",
+    "@types/node": "^22.20.7",
     "colyseus.js": "^0.16.22",
     "tsx": "^4.23.15",
     "typescript": "~6.0.3"
