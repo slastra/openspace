@@ -7,9 +7,10 @@
  *
  * Runs from package.json `prepare`/`predev`/`prebuild`/`pretypecheck`
  * hooks so the generated file is always present and reasonably fresh.
- * If git is unavailable (e.g., a tarball install with no .git), falls
- * back to a `dev` placeholder — clients in that mode never trigger
- * the update modal because every server reports `dev`.
+ * Coolify's nixpacks build has no .git, so there the SHA comes from the
+ * SOURCE_COMMIT env var (enable "Include Source Commit in Build" on the
+ * app). With neither, it falls back to a `dev` placeholder, and clients
+ * never trigger the update modal because every server reports `dev`.
  */
 import { execFileSync } from "node:child_process";
 import { writeFileSync, mkdirSync } from "node:fs";
@@ -28,7 +29,11 @@ function git(...args) {
   }
 }
 
-const sha = git("rev-parse", "--short", "HEAD") || "dev";
+const sourceCommit = process.env.SOURCE_COMMIT?.trim();
+const sha =
+  git("rev-parse", "--short", "HEAD") ||
+  (sourceCommit && sourceCommit !== "unknown" ? sourceCommit.slice(0, 7) : "") ||
+  "dev";
 // %ct is committer date in unix seconds; convert to ms for JS Date.
 const commitTimeSec = Number(git("log", "-1", "--pretty=format:%ct") || 0);
 const time = commitTimeSec > 0 ? commitTimeSec * 1000 : Date.now();
