@@ -4,8 +4,9 @@ import type { Application, Container } from "pixi.js";
  * Owns the camera position and the screen↔world transforms.
  *
  * The world container is positioned each frame so the camera's world point
- * lands at canvas center. The background container gets the same translation
- * scaled down for parallax. Game code only sets `target` and calls `apply()`.
+ * lands at canvas center, and `onApply` hands the camera position and screen
+ * size to the screen-space layers (parallax backdrop, vignette). Game code
+ * only sets `target` and calls `apply()`.
  */
 export interface Camera {
   x: number;
@@ -15,18 +16,11 @@ export interface Camera {
   screenToWorld(screenX: number, screenY: number): { x: number; y: number };
 }
 
-export interface CameraOptions {
-  /** Parallax factor for the background container (0 = static, 1 = same as world). */
-  backgroundParallax?: number;
-}
-
 export function createCamera(
   app: Application,
   world: Container,
-  background: Container,
-  options: CameraOptions = {},
+  onApply: (x: number, y: number, screenW: number, screenH: number) => void,
 ): Camera {
-  const parallax = options.backgroundParallax ?? 0.15;
   let x = 0;
   let y = 0;
 
@@ -40,7 +34,7 @@ export function createCamera(
   const apply = () => {
     const { w, h } = screen();
     world.position.set(w / 2 - x, h / 2 - y);
-    background.position.set((w / 2 - x) * parallax, (h / 2 - y) * parallax);
+    onApply(x, y, w, h);
   };
 
   app.renderer.on("resize", apply);

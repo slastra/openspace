@@ -175,46 +175,23 @@ export function startGame({ renderer, input, net }: GameDeps) {
   input.onKeyUp("Space", () => {
     dashHeld = false;
   });
-  input.onKeyTap("KeyQ", () => {
-    placing = placing === "base" ? null : "base";
-    if (placing) {
-      recycling = false;
-      placementGhost.setKind(placing);
-    }
-    placementGhost.container.visible = placing !== null;
-  });
-  input.onKeyTap("KeyW", () => {
-    placing = placing === "supply" ? null : "supply";
-    if (placing) {
-      recycling = false;
-      placementGhost.setKind(placing);
-    }
-    placementGhost.container.visible = placing !== null;
-  });
-  input.onKeyTap("KeyE", () => {
-    placing = placing === "turret" ? null : "turret";
-    if (placing) {
-      recycling = false;
-      placementGhost.setKind(placing);
-    }
-    placementGhost.container.visible = placing !== null;
-  });
-  input.onKeyTap("KeyR", () => {
-    placing = placing === "wall" ? null : "wall";
-    if (placing) {
-      recycling = false;
-      placementGhost.setKind(placing);
-    }
-    placementGhost.container.visible = placing !== null;
-  });
-  input.onKeyTap("KeyT", () => {
-    placing = placing === "medbay" ? null : "medbay";
-    if (placing) {
-      recycling = false;
-      placementGhost.setKind(placing);
-    }
-    placementGhost.container.visible = placing !== null;
-  });
+  const BUILD_BINDINGS: ReadonlyArray<readonly [string, StructureKindName]> = [
+    ["KeyQ", "base"],
+    ["KeyW", "supply"],
+    ["KeyE", "turret"],
+    ["KeyR", "wall"],
+    ["KeyT", "medbay"],
+  ];
+  for (const [key, kind] of BUILD_BINDINGS) {
+    input.onKeyTap(key, () => {
+      placing = placing === kind ? null : kind;
+      if (placing) {
+        recycling = false;
+        placementGhost.setKind(placing);
+      }
+      placementGhost.container.visible = placing !== null;
+    });
+  }
   input.onKeyTap("KeyX", () => {
     recycling = !recycling;
     if (recycling) {
@@ -290,7 +267,11 @@ export function startGame({ renderer, input, net }: GameDeps) {
     if (placing) {
       const snapX = snapToGrid(world.x);
       const snapY = snapToGrid(world.y);
-      if (!canPlace(placing, snapX, snapY, local, remotes, structures, net.sessionId)) return;
+      if (placeBlock(placing, snapX, snapY, local, remotes, structures, net.sessionId)) {
+        // Stay in placement mode so the reason under the ghost is readable.
+        placementGhost.reject();
+        return;
+      }
       net.buildStructure(placing, world.x, world.y);
       cancelModes();
       return;
@@ -322,6 +303,10 @@ export function startGame({ renderer, input, net }: GameDeps) {
       // of the dead state. Respawn fires when deathCount increments.
       const justDied = local.hp > 0 && snap.hp <= 0;
       const justRespawned = snap.deathCount > local.deathCount;
+      if (snap.hp < local.hp && local.maxHp > 0 && !justRespawned) {
+        // Red edge flash scaled by how big the hit was.
+        renderer.vignette.hit(0.3 + ((local.hp - snap.hp) / local.maxHp) * 2);
+      }
       if (justDied) {
         effects.add(
           createDeathBurst(local.prediction.position.x, local.prediction.position.y, local.color),
@@ -548,7 +533,7 @@ export function startGame({ renderer, input, net }: GameDeps) {
       // owns the visual now. Keep `code` in the console for diagnostics.
       console.warn("[client] disconnected", code);
       // Hide the (now-stale) world canvas so the dimmed overlay sits
-      // over a clean background — same trick the join overlay uses.
+      // over a clean background.
       const host = renderer.app.canvas.parentElement as HTMLElement | null;
       if (host) host.style.visibility = "hidden";
       hud.connectionState = "reconnecting";
@@ -653,14 +638,16 @@ export function startGame({ renderer, input, net }: GameDeps) {
       } else {
         // Dead: keep the camera anchored on the wreckage so the player can
         // see what happened (and where to come back to claim it themselves).
+        local.ship.updateMotion(dt);
         renderer.camera.setTarget(local.prediction.position.x, local.prediction.position.y);
       }
     }
     renderer.camera.apply();
 
+    renderer.vignette.tick(dt);
     interpDelay.advance(dt);
     const renderTime = serverNow - interpDelay.delayMs;
-    for (const r of remotes.values()) r.render(renderTime, serverNow);
+    for (const r of remotes.values()) r.render(renderTime, serverNow, dt);
     renderUnits(units, renderTime);
     renderProjectiles(projectiles, serverNow);
     tickAsteroids(asteroids, dt);
@@ -671,9 +658,11 @@ export function startGame({ renderer, input, net }: GameDeps) {
       asteroids.values(),
       structures.values(),
       units.values(),
+      wreckages.values(),
       local,
       net.sessionId,
       remotes.values(),
+      renderer.camera,
     );
     effects.update(dt);
     debug.render(local, remotes, units, asteroids, structures, net.sessionId);
@@ -715,8 +704,10 @@ export function startGame({ renderer, input, net }: GameDeps) {
       const sx = snapToGrid(cursor.x);
       const sy = snapToGrid(cursor.y);
       placementGhost.setPos(sx, sy);
-      placementGhost.setValid(canPlace(placing, sx, sy, local, remotes, structures, net.sessionId));
+      const block = placeBlock(placing, sx, sy, local, remotes, structures, net.sessionId);
+      placementGhost.setBlocked(block ? PLACE_BLOCK_TEXT[block] : null);
     }
+    placementGhost.tick(dt);
 
     // Recycle-mode visuals: pulse owned structures to make them obvious targets.
     // Pulse uses a sin wave so it's a soft strobe rather than a hard flash.
@@ -861,7 +852,18 @@ function cursorTarget(
  * Keeping this in lockstep with `ArenaRoom.onMessage("build-structure")`
  * avoids the player ever firing a click the server then ignores.
  */
-function canPlace(
+type PlaceBlock = "credits" | "limit" | "occupied" | "ship" | "spawn" | "claim";
+
+const PLACE_BLOCK_TEXT: Record<PlaceBlock, string> = {
+  credits: "Not enough minerals",
+  limit: "Already built",
+  occupied: "Occupied",
+  ship: "Ship in the way",
+  spawn: "No-build zone",
+  claim: "Enemy territory",
+};
+
+function placeBlock(
   kind: StructureKindName,
   snapX: number,
   snapY: number,
@@ -869,10 +871,10 @@ function canPlace(
   remotes: Map<string, RemotePlayer>,
   structures: Map<string, Structure>,
   localSessionId: string,
-): boolean {
+): PlaceBlock | null {
   const meta = STRUCTURE_KIND_META[kind];
-  if (!meta) return false;
-  if (local && local.credits < meta.cost) return false;
+  if (!meta) return "limit";
+  if (local && local.credits < meta.cost) return "credits";
   // Per-kind cap check (mirrors server). Walk own structures of the chosen
   // kind and reject if at the limit.
   if (meta.maxPerPlayer !== undefined) {
@@ -880,10 +882,10 @@ function canPlace(
     for (const s of structures.values()) {
       if (s.ownerId === localSessionId && s.kind === kind) ownedOfKind++;
     }
-    if (ownedOfKind >= meta.maxPerPlayer) return false;
+    if (ownedOfKind >= meta.maxPerPlayer) return "limit";
   }
   for (const s of structures.values()) {
-    if (s.view.container.x === snapX && s.view.container.y === snapY) return false;
+    if (s.view.container.x === snapX && s.view.container.y === snapY) return "occupied";
   }
   // Mirrors the server's trap check: only an enemy ship can be trapped
   // inside a new structure, since our own ship passes through ours.
@@ -893,7 +895,7 @@ function canPlace(
     if (r.hp <= 0) continue;
     const dx = r.renderedX - snapX;
     const dy = r.renderedY - snapY;
-    if (dx * dx + dy * dy < reachSq) return false;
+    if (dx * dx + dy * dy < reachSq) return "ship";
   }
   // No-build bubble around the world-center spawn point. Mirrors the
   // server-side check so the ghost reads red while the cursor is over
@@ -903,7 +905,7 @@ function canPlace(
     const cy = WORLD_HEIGHT / 2;
     const dx = snapX - cx;
     const dy = snapY - cy;
-    if (dx * dx + dy * dy < SPAWN_BUBBLE_RADIUS_U * SPAWN_BUBBLE_RADIUS_U) return false;
+    if (dx * dx + dy * dy < SPAWN_BUBBLE_RADIUS_U * SPAWN_BUBBLE_RADIUS_U) return "spawn";
   }
   // Mirror server base-claim check so the placement ghost reads red over
   // enemy claimed territory before the click ever fires. Own base doesn't
@@ -914,9 +916,9 @@ function canPlace(
     if (s.ownerId === localSessionId) continue;
     const dx = s.view.container.x - snapX;
     const dy = s.view.container.y - snapY;
-    if (dx * dx + dy * dy < claimSq) return false;
+    if (dx * dx + dy * dy < claimSq) return "claim";
   }
-  return true;
+  return null;
 }
 
 /**

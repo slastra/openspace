@@ -3,7 +3,7 @@ import type { Ticker } from "pixi.js";
 import { WORLD_HEIGHT, WORLD_WIDTH } from "@openspace/shared";
 import "./hud/theme.css";
 import { createRenderer } from "./render/renderer.js";
-import { buildGrid, buildSpawnBubble, buildStarfield } from "./render/background.js";
+import { buildGrid, buildSpawnBubble } from "./render/background.js";
 import { generateBuildIcons } from "./render/build-icons.js";
 import { createInput } from "./input.js";
 import { connectToArena } from "./net/client.js";
@@ -23,7 +23,6 @@ async function main() {
   }
 
   const renderer = await createRenderer(host);
-  buildStarfield(renderer.background);
   buildGrid(renderer.world);
   buildSpawnBubble(renderer.world);
   renderer.world.setChildIndex(renderer.entities, renderer.world.children.length - 1);

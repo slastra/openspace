@@ -1,4 +1,5 @@
 import { Container, Graphics } from "pixi.js";
+import { mulberry32 } from "./random.js";
 
 export interface AsteroidView {
   container: Container;
@@ -6,9 +7,10 @@ export interface AsteroidView {
   setHp: (frac: number) => void;
 }
 
-const ROCK_FILL = 0x4a4034;
+const ROCK_SHADOW = 0x241f1a;
+const ROCK_FILL = 0x51463a;
 const ROCK_STROKE = 0x8a7656;
-const ROCK_HIGHLIGHT = 0xb8a07a;
+const ROCK_HIGHLIGHT = 0xd8c3a0;
 
 /**
  * Build an asteroid view: a jagged closed polygon that visually breaks
@@ -33,22 +35,40 @@ export function createAsteroidView(radius: number, seed: number): AsteroidView {
     points.push({ x: Math.cos(angle) * r, y: Math.sin(angle) * r });
   }
 
+  // Light from the top-left: a dark base silhouette, a lit body offset
+  // toward the light, and a faint highlight cap. Each inner layer is the
+  // same polygon scaled down, so it stays inside the silhouette.
+  const layer = (scale: number, ox: number, oy: number) =>
+    points.flatMap((p) => [p.x * scale + ox * radius, p.y * scale + oy * radius]);
   rock
-    .poly(points.flatMap((p) => [p.x, p.y]))
+    .poly(layer(1, 0, 0))
+    .fill({ color: ROCK_SHADOW, alpha: 1 })
+    .poly(layer(0.84, -0.07, -0.08))
     .fill({ color: ROCK_FILL, alpha: 1 })
-    .stroke({ color: ROCK_STROKE, width: 1.5, alpha: 0.9 });
+    .poly(layer(0.5, -0.2, -0.22))
+    .fill({ color: ROCK_HIGHLIGHT, alpha: 0.14 })
+    .poly(layer(1, 0, 0))
+    .stroke({ color: ROCK_STROKE, width: Math.max(1.25, radius * 0.02), alpha: 0.5 });
 
-  // A few inner specks for a hint of texture without a real fill pattern.
-  const specks = new Graphics();
-  for (let i = 0; i < 4; i++) {
+  // Craters: a dark pit with a lit lower-right lip.
+  const craters = new Graphics();
+  const craterCount = 2 + Math.floor(rng() * 3);
+  for (let i = 0; i < craterCount; i++) {
     const a = rng() * Math.PI * 2;
-    const r = rng() * radius * 0.55;
-    specks.circle(Math.cos(a) * r, Math.sin(a) * r, 1.5).fill({
-      color: ROCK_HIGHLIGHT,
-      alpha: 0.55,
-    });
+    const d = rng() * radius * 0.5;
+    const cx = Math.cos(a) * d;
+    const cy = Math.sin(a) * d;
+    const cr = radius * (0.1 + rng() * 0.1);
+    const a0 = Math.PI * -0.05;
+    const a1 = Math.PI * 0.55;
+    craters
+      .circle(cx, cy, cr)
+      .fill({ color: ROCK_SHADOW, alpha: 0.65 })
+      .moveTo(cx + Math.cos(a0) * cr, cy + Math.sin(a0) * cr)
+      .arc(cx, cy, cr, a0, a1)
+      .stroke({ color: ROCK_HIGHLIGHT, width: Math.max(1, cr * 0.2), alpha: 0.3 });
   }
-  container.addChild(specks);
+  container.addChild(craters);
 
   const hpBar = createHealthBar(radius * 1.5);
   hpBar.container.position.set(0, -radius - 8);
@@ -90,19 +110,6 @@ function createHealthBar(width: number): MeterBar {
       const color = clamped > 0.5 ? 0xb8a07a : clamped > 0.25 ? 0xfacc15 : 0xf87171;
       fg.rect(-width / 2, 0, width * clamped, 3).fill({ color, alpha: 0.95 });
     },
-  };
-}
-
-/** Tiny seeded PRNG so each asteroid id gets a stable silhouette. */
-function mulberry32(seed: number): () => number {
-  let a = seed >>> 0;
-  return function () {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
 

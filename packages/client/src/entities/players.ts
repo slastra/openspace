@@ -38,6 +38,7 @@ export class LocalPlayer {
     this.ship.setRotation(snap.rotation);
     this.ship.setHp(snap.maxHp > 0 ? snap.hp / snap.maxHp : 1);
     this.ship.setShield(snap.maxShield > 0 ? snap.shield / snap.maxShield : 0);
+    renderer.entities.addChildAt(this.ship.trail, 0);
     renderer.entities.addChild(this.ship.container);
 
     this.prediction = new LocalPrediction(snap.x, snap.y, getObstacles);
@@ -97,6 +98,7 @@ export class LocalPlayer {
     this.ship.setRotation(rotation);
     this.ship.setHp(this.maxHp > 0 ? this.hp / this.maxHp : 0);
     this.ship.setShield(this.maxShield > 0 ? this.shield / this.maxShield : 0);
+    this.ship.updateMotion(dt);
     return { inputs, x: pos.x, y: pos.y, rotation };
   }
 }
@@ -139,6 +141,7 @@ export class RemotePlayer {
     this.ship.container.x = snap.x;
     this.ship.container.y = snap.y;
     this.ship.setRotation(snap.rotation);
+    renderer.entities.addChildAt(this.ship.trail, 0);
     renderer.entities.addChild(this.ship.container);
 
     this.interp = new RemoteInterpolator();
@@ -185,8 +188,9 @@ export class RemotePlayer {
   }
 
   /** `renderTime` is the interpolation time (server now minus the delay);
-   *  `serverNow` drives the spawn-invulnerability blink. */
-  render(renderTime: number, serverNow: number) {
+   *  `serverNow` drives the spawn-invulnerability blink; `dt` (seconds)
+   *  drives the engine flame and trail. */
+  render(renderTime: number, serverNow: number, dt: number) {
     const s = this.interp.sample(renderTime);
     if (!s) return;
     this.ship.container.x = s.x;
@@ -195,11 +199,14 @@ export class RemotePlayer {
     this.ship.setRotation(s.rotation);
     this.ship.setHp(this.hpFraction);
     this.ship.setShield(this.shieldFraction);
+    this.ship.updateMotion(dt);
     this.renderedX = s.x;
     this.renderedY = s.y;
   }
 
   destroy(renderer: Renderer) {
+    renderer.entities.removeChild(this.ship.trail);
+    this.ship.trail.destroy();
     renderer.entities.removeChild(this.ship.container);
     this.ship.container.destroy({ children: true });
   }

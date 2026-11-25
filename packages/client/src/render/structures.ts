@@ -1,4 +1,4 @@
-import { Container, Graphics } from "pixi.js";
+import { Container, Graphics, Text } from "pixi.js";
 import {
   BASE_CLAIM_RADIUS_U,
   STRUCTURE_GRID_SNAP,
@@ -381,8 +381,8 @@ function buildSupply(container: Container, color: string) {
 
 /**
  * Translucent ghost rendered at the snapped grid cell while the player is
- * in placement mode. `valid` toggles between affordable+legal (green-ish)
- * and rejected (red-ish) tints so the player gets immediate feedback.
+ * in placement mode. Green when the spot is legal; red with a reason label
+ * underneath when it isn't. `reject()` shakes it after a refused click.
  * `setKind` resizes the ghost to match the chosen structure's footprint
  * so a wall ghost (100u) doesn't visually under-represent the actual
  * placement.
@@ -390,15 +390,36 @@ function buildSupply(container: Container, color: string) {
 export function createPlacementGhost(): {
   container: Container;
   setPos: (x: number, y: number) => void;
-  setValid: (valid: boolean) => void;
+  /** `null` when the spot is legal, otherwise the reason to show. */
+  setBlocked: (reason: string | null) => void;
   setKind: (kind: string) => void;
+  /** Shake once (a click on an illegal spot). */
+  reject: () => void;
+  tick: (dtSeconds: number) => void;
 } {
   const container = new Container();
+  const body = new Container();
   const g = new Graphics();
-  container.addChild(g);
-  let lastValid: boolean | null = null;
+  const label = new Text({
+    text: "",
+    style: {
+      fontFamily: "Chakra Petch, sans-serif",
+      fontWeight: "700",
+      fontSize: 13,
+      letterSpacing: 1,
+      fill: 0xfecaca,
+      stroke: { color: 0x0a0e1a, width: 4 },
+    },
+  });
+  label.anchor.set(0.5, 0);
+  label.resolution = 2;
+  body.addChild(g);
+  body.addChild(label);
+  container.addChild(body);
+  let lastReason: string | null | undefined = undefined;
   let lastKind = "";
   let size = SIZE;
+  let shake = 0;
 
   const draw = (valid: boolean) => {
     g.clear();
@@ -411,6 +432,7 @@ export function createPlacementGhost(): {
     // Crosshair marker for the snap center.
     g.moveTo(-6, 0).lineTo(6, 0).stroke({ color, width: 1, alpha: 0.7 });
     g.moveTo(0, -6).lineTo(0, 6).stroke({ color, width: 1, alpha: 0.7 });
+    label.y = half + 8;
   };
   draw(true);
 
@@ -420,10 +442,22 @@ export function createPlacementGhost(): {
       container.x = x;
       container.y = y;
     },
-    setValid(valid) {
-      if (valid === lastValid) return;
-      lastValid = valid;
-      draw(valid);
+    setBlocked(reason) {
+      if (reason === lastReason) return;
+      lastReason = reason;
+      label.text = reason ? reason.toUpperCase() : "";
+      draw(reason === null);
+    },
+    reject() {
+      shake = 1;
+    },
+    tick(dt) {
+      if (shake <= 0) {
+        body.x = 0;
+        return;
+      }
+      shake = Math.max(0, shake - dt / 0.3);
+      body.x = Math.sin(shake * 40) * 6 * shake;
     },
     setKind(kind) {
       if (kind === lastKind) return;
@@ -437,7 +471,7 @@ export function createPlacementGhost(): {
           ? meta.halfExtent * 2
           : SIZE;
       // Force redraw at new size; preserve current valid color.
-      draw(lastValid ?? true);
+      draw(lastReason == null);
     },
   };
 }

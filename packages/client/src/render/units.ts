@@ -1,5 +1,5 @@
 import { Container, Graphics } from "pixi.js";
-import { PLAYER_SIZE, UNIT_KIND_META, UNIT_SIZE } from "@openspace/shared";
+import { PLAYER_SIZE, PLAYER_SPEED, UNIT_KIND_META, UNIT_SIZE } from "@openspace/shared";
 import { lighten, parseHexColor } from "./colors.js";
 
 const SHIELD_AURA_COLOR = 0x60d4ff;
@@ -13,6 +13,11 @@ export interface ShipView {
   setRotation: (radians: number) => void;
   setHp: (frac: number) => void;
   setShield: (frac: number) => void;
+  /** World-space engine trail. Add to the entity layer under `container`. */
+  trail: Graphics;
+  /** Per frame, after positioning `container`: feeds the engine flame and
+   *  trail from how far the ship moved. */
+  updateMotion: (dtSeconds: number) => void;
 }
 
 export interface UnitView {
@@ -34,9 +39,16 @@ export function createShipView(): ShipView {
   container.addChild(body);
 
   const glow = new Graphics();
+  const flame = new Graphics();
   const hull = new Graphics();
+  flame.blendMode = "add";
   body.addChild(glow);
+  body.addChild(flame);
   body.addChild(hull);
+  const trail = new Graphics();
+  trail.blendMode = "add";
+  trail.zIndex = -10;
+  container.zIndex = 10;
 
   const hpBar = createHealthBar(PLAYER_SIZE - 4);
   hpBar.container.position.set(0, -PLAYER_SIZE * 0.85);
@@ -70,13 +82,86 @@ export function createShipView(): ShipView {
 
     glow.clear();
     if (isLocal) {
-      const halo = [
-        { x: half * 1.8, y: 0 },
-        { x: tail * 1.8, y: -wing * 1.8 },
-        { x: tail * 0.9, y: 0 },
-        { x: tail * 1.8, y: wing * 1.8 },
-      ];
-      glow.roundShape(halo, 4).fill({ color: tint, alpha: 0.18 });
+      // Soft ground glow so your own ship stands out inside its swarm.
+      for (const [r, a] of [
+        [PLAYER_SIZE * 1.6, 0.05],
+        [PLAYER_SIZE * 1.15, 0.07],
+        [PLAYER_SIZE * 0.8, 0.09],
+      ] as const) {
+        glow.circle(0, 0, r).fill({ color: tint, alpha: a });
+      }
+    }
+
+    // Unit-length flame pointing backward from the tail notch; scaled per
+    // frame by speed. Additive, so it reads as light over anything.
+    flame
+      .clear()
+      .poly([0, -wing * 0.42, -1, 0, 0, wing * 0.42])
+      .fill({ color: lighten(tint, 0.35), alpha: 0.55 })
+      .poly([0, -wing * 0.2, -0.75, 0, 0, wing * 0.2])
+      .fill({ color: 0xffffff, alpha: 0.6 });
+    flame.x = tail * 0.5 + 1;
+    trailColor = tint;
+  };
+
+  // Engine trail: recent positions, sampled by distance, aged out so the
+  // trail shrinks when the ship stops.
+  const TRAIL_MAX = 18;
+  const TRAIL_SPACING = 7;
+  const TRAIL_LIFE_S = 0.45;
+  const pts: { x: number; y: number; age: number }[] = [];
+  let trailColor = 0xffffff;
+  let speedSmoothed = 0;
+  let lastX = Number.NaN;
+  let lastY = Number.NaN;
+  let flicker = 0;
+
+  const updateMotion = (dt: number) => {
+    const x = container.x;
+    const y = container.y;
+    if (Number.isNaN(lastX) || !container.visible) {
+      lastX = x;
+      lastY = y;
+      pts.length = 0;
+      trail.clear();
+      return;
+    }
+    const moved = Math.hypot(x - lastX, y - lastY);
+    lastX = x;
+    lastY = y;
+    // A respawn or reconcile snap is a teleport, not motion.
+    if (moved > 120) {
+      pts.length = 0;
+    }
+    const speed = dt > 0 ? Math.min(moved / dt, PLAYER_SPEED * 2.5) : 0;
+    speedSmoothed += (speed - speedSmoothed) * Math.min(1, dt * 10);
+
+    flicker += dt * 40;
+    const k = Math.min(1, speedSmoothed / PLAYER_SPEED);
+    const len = k < 0.05 ? 0 : 5 + k * 13 * (1 + 0.12 * Math.sin(flicker));
+    flame.visible = len > 0;
+    flame.scale.set(len, 0.8 + 0.2 * k);
+    flame.alpha = container.alpha;
+
+    for (const p of pts) p.age += dt;
+    while (pts.length > 0 && pts[0]!.age > TRAIL_LIFE_S) pts.shift();
+    const head = pts[pts.length - 1];
+    if (!head || Math.hypot(head.x - x, head.y - y) >= TRAIL_SPACING) {
+      pts.push({ x, y, age: 0 });
+      if (pts.length > TRAIL_MAX) pts.shift();
+    }
+
+    trail.clear();
+    if (pts.length < 2) return;
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1]!;
+      const b = pts[i]!;
+      const life = 1 - b.age / TRAIL_LIFE_S;
+      const along = i / pts.length;
+      trail
+        .moveTo(a.x, a.y)
+        .lineTo(b.x, b.y)
+        .stroke({ color: trailColor, width: 1 + along * 4, alpha: 0.28 * life * along, cap: "round" });
     }
   };
 
@@ -88,6 +173,7 @@ export function createShipView(): ShipView {
     },
     setLocal(value) {
       isLocal = value;
+      container.zIndex = value ? 11 : 10;
       redraw();
     },
     setRotation(r) {
@@ -99,6 +185,8 @@ export function createShipView(): ShipView {
     setShield(frac) {
       shieldBar.set(frac);
     },
+    trail,
+    updateMotion,
   };
 }
 
@@ -515,14 +603,21 @@ interface MeterBar {
   set: (frac: number) => void;
 }
 
+/**
+ * HP bar that only shows while the owner is hurt. A full-health swarm
+ * otherwise reads as a field of green dashes. The fill is drawn once and
+ * scaled/tinted, so a change never rebuilds geometry.
+ */
 function createHealthBar(width: number, height: number = 3): MeterBar {
   const container = new Container();
   const bg = new Graphics();
   const fg = new Graphics();
-  bg.rect(-width / 2, 0, width, height).fill({ color: 0x10141c, alpha: 0.7 });
-  bg.stroke({ color: 0x2a3346, width: 0.75, alpha: 0.8 });
+  bg.rect(-width / 2 - 0.5, -0.5, width + 1, height + 1).fill({ color: 0x05080f, alpha: 0.75 });
+  fg.rect(0, 0, width, height).fill({ color: 0xffffff, alpha: 0.95 });
+  fg.position.set(-width / 2, 0);
   container.addChild(bg);
   container.addChild(fg);
+  container.visible = false;
   let lastFrac = -1;
   return {
     container,
@@ -530,11 +625,9 @@ function createHealthBar(width: number, height: number = 3): MeterBar {
       const clamped = frac < 0 ? 0 : frac > 1 ? 1 : frac;
       if (clamped === lastFrac) return;
       lastFrac = clamped;
-      fg.clear();
-      if (clamped <= 0) return;
-      const color =
-        clamped > 0.5 ? 0x4ade80 : clamped > 0.25 ? 0xfacc15 : 0xf87171;
-      fg.rect(-width / 2, 0, width * clamped, height).fill({ color, alpha: 0.95 });
+      container.visible = clamped < 1;
+      fg.scale.x = clamped;
+      fg.tint = clamped > 0.5 ? 0x4ade80 : clamped > 0.25 ? 0xfacc15 : 0xf87171;
     },
   };
 }
