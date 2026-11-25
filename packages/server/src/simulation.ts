@@ -1,4 +1,5 @@
 import {
+  ASTEROID_TIERS,
   ArenaState,
   COLLISION_DAMAGE_MAX,
   COLLISION_DAMAGE_MIN,
@@ -188,7 +189,7 @@ export function simulateTick(
   // auras, projectiles, explosions, and the room's AOI views) queries
   // where things are now, not where they were before the physics step.
   rebuildTickGrids(ctx.grids, state);
-  mineAsteroids(state, ctx.creditAccrual);
+  mineAsteroids(state, ctx.creditAccrual, ctx.grids);
   runUnitAbilities(state, ctx);
   runStructureAbilities(state, ctx);
   runRepairs(state);
@@ -1161,7 +1162,15 @@ function runRepairs(state: ArenaState) {
  * Player ships also mine (weaker DPS) so a starting player without miners
  * can bootstrap an economy by parking on a rock.
  */
-function mineAsteroids(state: ArenaState, creditAccrual: Map<string, number>) {
+/** Grid query radius for ship mining: reaches the biggest asteroid tier. */
+const PLAYER_MINING_QUERY_RADIUS =
+  PLAYER_CONTACT_RADIUS + Math.max(...ASTEROID_TIERS.map((t) => t.radius)) + PLAYER_MINING_REACH;
+
+function mineAsteroids(
+  state: ArenaState,
+  creditAccrual: Map<string, number>,
+  grids: TickGrids,
+) {
   for (const unit of state.units.values()) {
     if (unit.hp <= 0) continue;
     if (unit.wreckageId || unit.deactivated) continue; // orphans + sleeping don't extract
@@ -1187,18 +1196,18 @@ function mineAsteroids(state: ArenaState, creditAccrual: Map<string, number>) {
   if (PLAYER_MINING_DPS <= 0) return;
   for (const [sessionId, player] of state.players) {
     if (player.hp <= 0) continue;
-    for (const asteroid of state.asteroids.values()) {
-      if (asteroid.hp <= 0) continue;
+    grids.asteroids.forEachInRadius(player.x, player.y, PLAYER_MINING_QUERY_RADIUS, (asteroid) => {
+      if (asteroid.hp <= 0) return;
       const reach = PLAYER_CONTACT_RADIUS + asteroid.radius + PLAYER_MINING_REACH;
       const dx = asteroid.x - player.x;
       const dy = asteroid.y - player.y;
-      if (dx * dx + dy * dy > reach * reach) continue;
+      if (dx * dx + dy * dy > reach * reach) return;
       const damage = Math.min(asteroid.hp, PLAYER_MINING_DPS * TICK_DT);
       asteroid.hp = Math.max(0, asteroid.hp - damage);
       asteroid.lastHitBy = sessionId;
       const prev = creditAccrual.get(sessionId) ?? 0;
       creditAccrual.set(sessionId, prev + damage * CREDITS_PER_ASTEROID_HP);
-    }
+    });
   }
 }
 

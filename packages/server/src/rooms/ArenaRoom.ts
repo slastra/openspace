@@ -170,15 +170,10 @@ export class ArenaRoom extends Room<{ state: ArenaState }> {
       if (!meta) return;
       if (player.credits < meta.cost) return;
       if (player.supplyUsed + meta.supplyCost > player.supplyCap) return;
-      // Hard per-player live-unit cap. Counts only non-orphan units so a
-      // dead player's wreckage swarm doesn't block their respawn from
-      // spawning fresh units. Spawn rate is rate-limited (≤4/sec/player),
-      // so the walk cost is negligible.
-      let owned = 0;
-      for (const u of this.state.units.values()) {
-        if (u.ownerId === client.sessionId && !u.wreckageId) owned++;
-      }
-      if (owned >= MAX_UNITS_PER_PLAYER) return;
+      // Hard per-player live-unit cap. ownedUnitCount counts only non-orphan
+      // units, so a dead player's wreckage swarm doesn't block their respawn
+      // from spawning fresh units.
+      if (player.ownedUnitCount >= MAX_UNITS_PER_PLAYER) return;
       const now = performance.now();
       const last = this.lastUnitSpawnAt.get(client.sessionId) ?? 0;
       if (now - last < UNIT_SPAWN_COOLDOWN_MS) return;
@@ -615,6 +610,11 @@ export class ArenaRoom extends Room<{ state: ArenaState }> {
     const radiusSq = radius * radius;
     const outerSq = (radius + AOI_HYSTERESIS_U) * (radius + AOI_HYSTERESIS_U);
 
+    // Index owned entities once, so each client walks only its own rather
+    // than every unit and structure in the room.
+    const unitsByOwner = groupByOwner(this.state.units.values());
+    const structuresByOwner = groupByOwner(this.state.structures.values());
+
     for (const client of this.clients) {
       const view = client.view;
       if (!view) continue;
@@ -628,13 +628,11 @@ export class ArenaRoom extends Room<{ state: ArenaState }> {
       // Own player + own units + own structures are always visible.
       view.add(player);
       next.add(sessionId);
-      for (const u of this.state.units.values()) {
-        if (u.ownerId !== sessionId) continue;
+      for (const u of unitsByOwner.get(sessionId) ?? []) {
         if (!prev.has(u.id)) view.add(u);
         next.add(u.id);
       }
-      for (const s of this.state.structures.values()) {
-        if (s.ownerId !== sessionId) continue;
+      for (const s of structuresByOwner.get(sessionId) ?? []) {
         if (!prev.has(s.id)) view.add(s);
         next.add(s.id);
       }
@@ -876,6 +874,19 @@ function sanitizeName(raw: unknown, fallbackIndex: number): string {
   if (typeof raw !== "string") return `Player ${fallbackIndex + 1}`;
   const trimmed = raw.trim().slice(0, 16);
   return trimmed.length > 0 ? trimmed : `Player ${fallbackIndex + 1}`;
+}
+
+function groupByOwner<T extends { ownerId: string }>(items: Iterable<T>): Map<string, T[]> {
+  const out = new Map<string, T[]>();
+  for (const item of items) {
+    let list = out.get(item.ownerId);
+    if (!list) {
+      list = [];
+      out.set(item.ownerId, list);
+    }
+    list.push(item);
+  }
+  return out;
 }
 
 function isValidInput(p: unknown): p is PlayerInput {

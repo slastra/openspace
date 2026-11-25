@@ -289,6 +289,19 @@ describe("formation", () => {
   });
 });
 
+describe("ship mining", () => {
+  it("mines any asteroid in reach, including the giant tier", async () => {
+    for (const radius of [14, 252]) {
+      const w = await createTestWorld();
+      w.addPlayer("a", 3000, 3000);
+      const rock = w.addAsteroid(3000 + 12 + radius + 2, 3000, radius, 100);
+      for (let i = 0; i < 30; i++) w.tick();
+      expect(rock.hp).toBeLessThan(100);
+      expect(w.ctx.creditAccrual.get("a") ?? 0).toBeGreaterThan(0);
+    }
+  });
+});
+
 describe("bookkeeping", () => {
   it("forgets per-unit side tables when units die", async () => {
     const w = await createTestWorld();
