@@ -64,8 +64,8 @@ importers:
         specifier: ^0.16.4
         version: 0.16.5(@colyseus/core@0.16.24(@colyseus/schema@3.0.76)(@pm2/io@6.1.0))
       '@dimforge/rapier2d-compat':
-        specifier: ^0.14.0
-        version: 0.14.0
+        specifier: ^0.21.0
+        version: 0.21.0
       '@openspace/shared':
         specifier: workspace:*
         version: link:../shared
@@ -154,8 +154,8 @@ packages:
     peerDependencies:
       '@colyseus/core': 0.16.x
 
-  '@dimforge/rapier2d-compat@0.14.0':
-    resolution: {integrity: sha512-sljQVPstRS63hVLnVNphsZUjH51TZoptVM0XlglKAdZ8CT+kWnmA6olwjkF7omPWYrlKMd/nHORxOUdJDOSoAQ==}
+  '@dimforge/rapier2d-compat@0.21.0':
+    resolution: {integrity: sha512-cMStLQZbY5D/ajAPjOwTwoYuAJAungTYB45MNFEa5B+LGaMiZfxLwjHsfpxH5B0sDa+gkmcQFJJKiHNKnlpMnA==}
 
   '@emnapi/core@2.0.0-beta.2':
     resolution: {integrity: sha512-MzCVoWtcg4Pm2B3je5mMvYMvj3MmBKw+fU7vbsJc9/iT8ip6/eYIHo/Dsm/mr+wsHB6SEyJDuxB09Yy6r/8+4A==}
@@ -2006,7 +2006,7 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@dimforge/rapier2d-compat@0.14.0': {}
+  '@dimforge/rapier2d-compat@0.21.0': {}
 
   '@emnapi/core@2.0.0-beta.2':
     dependencies:
@@ -3324,7 +3324,7 @@ snapshots:
 
   require-in-the-middle@5.2.0:
     dependencies:
-      debug: 4.3.7
+      debug: 4.4.3
       module-details-from-path: 1.0.4
       resolve: 1.22.14
     transitivePeerDependencies:

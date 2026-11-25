@@ -13,7 +13,7 @@
   "dependencies": {
     "@colyseus/schema": "^3.0.76",
     "@colyseus/ws-transport": "^0.16.4",
-    "@dimforge/rapier2d-compat": "^0.14.0",
+    "@dimforge/rapier2d-compat": "^0.21.0",
     "@openspace/shared": "workspace:*",
     "colyseus": "^0.16.4"
   },

@@ -18,6 +18,9 @@ if (MAX_PLAYERS_PER_ROOM > 16) {
  *  honest if the player cap ever changes. */
 const PLAYER_BITS_MASK = (1 << MAX_PLAYERS_PER_ROOM) - 1;
 
+/** World units per Rapier "meter". See `createPhysicsWorld`. */
+const PHYSICS_LENGTH_UNIT = 10;
+
 let initPromise: Promise<void> | null = null;
 
 /**
@@ -51,6 +54,11 @@ export interface PhysicsWorld {
 export function createPhysicsWorld(): PhysicsWorld {
   const world = new RAPIER.World({ x: 0, y: 0 });
   world.timestep = TICK_DT;
+  // Rapier scales its tolerances, and since 0.20 a hard linear speed cap of
+  // 400 × lengthUnit u/s, by this "units per meter" value. Our bodies are
+  // ~10u across, so 10 puts the tolerances at our scale and lifts the cap
+  // to 4000 u/s (at 1, the dashing ship and rammers clamp at 400).
+  world.lengthUnit = PHYSICS_LENGTH_UNIT;
   // event queue with auto-update of contact pairs
   const eventQueue = new RAPIER.EventQueue(true);
   return { world, eventQueue, handleMap: new Map() };
