@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
+  import { isTouch } from "./device.js";
 
   let { initialName = "", onSubmit }: { initialName?: string; onSubmit: (name: string) => void } =
     $props();
@@ -30,6 +31,7 @@
     ["Right-drag", "Emote wheel"],
     ["X", "Recycle structure"],
     ["Esc", "Cancel placement"],
+    ["Wheel", "Zoom"],
     ["M", "Mute sound"],
     ["F1", "Debug overlay"],
   ];
@@ -40,6 +42,13 @@
     ["F", "Laser"],
     ["G", "Repair"],
     ["H", "Shielder"],
+  ];
+  const TOUCH_CONTROLS: ReadonlyArray<readonly [string, string]> = [
+    ["Hold", "Touch and hold anywhere to steer toward your finger"],
+    ["Tap", "Tap an enemy or asteroid to focus your drones on it"],
+    ["Pinch", "Zoom in and out"],
+    ["Cards", "Tap a building, then tap or drag-and-lift to place it. Hold a unit card to keep spawning."],
+    ["Dash", "Hold to recall your drones and boost"],
   ];
   const BUILD_KEYS: ReadonlyArray<readonly [string, string]> = [
     ["Q", "Base (free, max 1)"],
@@ -73,6 +82,16 @@
       <button type="submit" class="btn btn-primary">Launch <span class="keycap">↵</span></button>
     </div>
 
+    {#if isTouch}
+      <div class="touch-help">
+        {#each TOUCH_CONTROLS as [k, label] (k)}
+          <div class="touch-row">
+            <span class="keycap wide">{k}</span>
+            <span class="label">{label}</span>
+          </div>
+        {/each}
+      </div>
+    {:else}
     <div class="controls">
       <div class="col col-pilot">
         <div class="hud-label heading">Pilot</div>
@@ -102,6 +121,7 @@
         {/each}
       </div>
     </div>
+    {/if}
     <p class="hint">Place a base first, then hold a spawn key to grow your swarm.</p>
   </form>
 </div>
@@ -109,6 +129,25 @@
 <style>
   .join {
     background: radial-gradient(ellipse at center, rgba(10, 14, 26, 0.15) 0%, rgba(10, 14, 26, 0.7) 100%);
+    /* Short screens (landscape phones): scroll instead of clipping. */
+    overflow-y: auto;
+    align-items: safe center;
+    padding: 16px 0;
+    box-sizing: border-box;
+    touch-action: pan-y;
+  }
+  .touch-help {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    margin: 22px -36px 0;
+    padding: 18px 36px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+  }
+  .touch-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
   .panel {
     padding: 30px 36px 22px;
@@ -123,7 +162,7 @@
     margin: 0;
     font-family: var(--font-ui);
     font-weight: 700;
-    font-size: 44px;
+    font-size: clamp(30px, 9vw, 44px);
     line-height: 1;
     letter-spacing: 0.22em;
     text-transform: uppercase;
@@ -152,6 +191,8 @@
     gap: 10px;
   }
   input {
+    -webkit-user-select: text;
+    user-select: text;
     flex: 1;
     min-width: 0;
     padding: 10px 12px;
@@ -236,11 +277,24 @@
     color: var(--text-faint);
   }
   @media (max-width: 640px) {
+    .panel {
+      padding: 22px 20px 18px;
+    }
+    .controls,
+    .touch-help {
+      margin-left: -20px;
+      margin-right: -20px;
+      padding-left: 20px;
+      padding-right: 20px;
+    }
     .controls {
       grid-template-columns: 1fr 1fr;
     }
     .col-pilot {
       grid-column: 1 / -1;
+    }
+    .tagline {
+      font-size: 13px;
     }
   }
 </style>

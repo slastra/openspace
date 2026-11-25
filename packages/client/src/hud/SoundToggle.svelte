@@ -30,8 +30,8 @@
 <style>
   .sound {
     position: absolute;
-    top: var(--sound-top, 230px);
-    right: 18px;
+    top: calc(var(--gutter-top) + 216px);
+    right: var(--gutter-x);
     width: 34px;
     height: 34px;
     display: flex;
@@ -58,5 +58,12 @@
     stroke: currentColor;
     stroke-width: 2;
     stroke-linecap: round;
+  }
+  @media (max-width: 719px), (max-height: 500px) {
+    .sound {
+      top: calc(var(--gutter-top) + 146px);
+      width: 32px;
+      height: 32px;
+    }
   }
 </style>

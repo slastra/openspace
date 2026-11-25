@@ -24,7 +24,9 @@ export async function createRenderer(host: HTMLElement): Promise<Renderer> {
     resizeTo: window,
     antialias: true,
     autoDensity: true,
-    resolution: window.devicePixelRatio || 1,
+    // Phones report DPR 3; rendering at 2 is visually identical at arm's
+    // length and saves over half the fill work.
+    resolution: Math.min(window.devicePixelRatio || 1, 2),
   });
   host.appendChild(app.canvas);
 

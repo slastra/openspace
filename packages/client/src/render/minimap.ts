@@ -8,9 +8,8 @@ import type { Wreckage } from "../entities/wreckages.js";
 import type { Camera } from "./camera.js";
 import { parseHexColor } from "./colors.js";
 
+/** Drawing size; the container is scaled to the HUD's `.minimap-slot`. */
 const MAP_SIZE = 168;
-const EDGE_OFFSET_X = 18;
-const EDGE_OFFSET_Y = 14;
 const INSET = 8;
 const INNER = MAP_SIZE - INSET * 2;
 /** Matches the HUD panel tokens in hud/theme.css. */
@@ -35,6 +34,7 @@ export class Minimap {
   private readonly dots: Graphics;
   private readonly app: Application;
   private lastRenderAt = 0;
+  private slot: Element | null = null;
 
   constructor(app: Application) {
     this.app = app;
@@ -44,6 +44,8 @@ export class Minimap {
     this.container.addChild(frame);
     this.container.addChild(this.dots);
     app.stage.addChild(this.container);
+    // Hidden until the first layout read places it.
+    this.container.visible = false;
 
     const sx = INNER / WORLD_WIDTH;
     frame
@@ -74,14 +76,12 @@ export class Minimap {
     remotes: Iterable<RemotePlayer>,
     camera: Camera,
   ) {
-    // Pin to bottom-right every frame (cheap; layout stays correct on resize)
-    // but rate-limit the actual Graphics rebuild to MIN_RENDER_INTERVAL_MS.
+    // Rate-limit both the layout read and the Graphics rebuild.
     const { width: sw, height: sh } = this.app.screen;
-    this.container.x = sw - MAP_SIZE - EDGE_OFFSET_X;
-    this.container.y = sh - MAP_SIZE - EDGE_OFFSET_Y;
     const now = performance.now();
     if (now - this.lastRenderAt < MIN_RENDER_INTERVAL_MS) return;
     this.lastRenderAt = now;
+    this.followSlot();
 
     const d = this.dots;
     d.clear();
@@ -129,8 +129,8 @@ export class Minimap {
     }
 
     // Camera view rectangle.
-    const vw = sw * s;
-    const vh = sh * sy;
+    const vw = (sw / camera.zoom) * s;
+    const vh = (sh / camera.zoom) * sy;
     d.rect(mx(camera.x) - vw / 2, my(camera.y) - vh / 2, vw, vh).stroke({
       color: 0xffffff,
       width: 1,
@@ -142,5 +142,20 @@ export class Minimap {
         .fill({ color: fleetColor, alpha: 1 })
         .stroke({ color: 0xffffff, width: 1, alpha: 0.95 });
     }
+  }
+
+  /** Match the HUD's `.minimap-slot` box (position + size), or hide when
+   *  the layout has no room for a map. */
+  private followSlot() {
+    if (!this.slot || !this.slot.isConnected) this.slot = document.querySelector(".minimap-slot");
+    const canvasRect = this.app.canvas.getBoundingClientRect();
+    const r = this.slot?.getBoundingClientRect();
+    if (!r || r.width < 40) {
+      this.container.visible = false;
+      return;
+    }
+    this.container.visible = true;
+    this.container.position.set(r.left - canvasRect.left, r.top - canvasRect.top);
+    this.container.scale.set(r.width / MAP_SIZE);
   }
 }

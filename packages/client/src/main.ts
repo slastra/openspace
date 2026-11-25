@@ -69,6 +69,7 @@ async function main() {
   // resumes it.
   window.addEventListener("pointerdown", () => sfx.unlock());
   window.addEventListener("keydown", () => sfx.unlock());
+  window.addEventListener("touchend", () => sfx.unlock());
   startGame({ renderer, input, net });
   console.log("[client] joined as", net.sessionId, "name=", name);
 }

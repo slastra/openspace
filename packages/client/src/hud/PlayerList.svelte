@@ -34,8 +34,8 @@
 <style>
   .player-list {
     position: absolute;
-    top: 14px;
-    left: 18px;
+    top: var(--gutter-top);
+    left: var(--gutter-x);
     padding: 10px 10px 8px;
     pointer-events: none;
     user-select: none;
@@ -121,5 +121,22 @@
   .dead-mark {
     font-size: 10px;
     color: var(--danger);
+  }
+  @media (max-width: 719px), (max-height: 500px) {
+    .player-list {
+      width: 156px;
+      padding: 7px 6px 5px;
+    }
+    .row {
+      height: 20px;
+      gap: 5px;
+    }
+    .name {
+      font-size: 12px;
+    }
+    /* Top three plus yourself. */
+    .row:nth-child(n + 5):not(.self) {
+      display: none;
+    }
   }
 </style>

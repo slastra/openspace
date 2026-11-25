@@ -69,7 +69,7 @@
     --card-h: clamp(66px, 8.4vh, 76px);
     position: absolute;
     left: 50%;
-    bottom: 14px;
+    bottom: var(--gutter-bottom);
     transform: translateX(-50%);
     display: flex;
     align-items: stretch;
@@ -102,5 +102,27 @@
     width: 1px;
     margin: 18px 0 4px;
     background: linear-gradient(180deg, transparent, rgba(148, 163, 184, 0.3), transparent);
+  }
+  @media (max-width: 719px) {
+    /* Two stacked groups that fill the width: structures, then units. */
+    .build-hud {
+      --card-w: min(58px, calc((100vw - 2 * var(--gutter-x) - 16px - 5 * 4px) / 6));
+      --card-h: 60px;
+      flex-direction: column;
+      gap: 4px;
+      padding: 5px 8px 6px;
+    }
+    .divider {
+      display: none;
+    }
+  }
+  @media (max-height: 500px) and (min-width: 720px) {
+    .build-hud {
+      --card-w: 52px;
+      --card-h: 58px;
+      left: var(--gutter-x);
+      transform: none;
+      padding: 5px 8px 6px;
+    }
   }
 </style>

@@ -43,6 +43,59 @@
 
   --label-size: 10px;
   --label-spacing: 0.2em;
+
+  /* Layout: screen-edge gutters (respecting notches) and the build bar's
+   * height, which the hint and the minimap stack against. */
+  --gutter-x: max(18px, env(safe-area-inset-left), env(safe-area-inset-right));
+  --gutter-top: max(14px, env(safe-area-inset-top));
+  --gutter-bottom: max(14px, env(safe-area-inset-bottom));
+  --build-bar-h: 112px;
+}
+
+/*
+ * Breakpoints used across HUD components:
+ *   narrow: (max-width: 719px)                     portrait phones
+ *   short:  (max-height: 500px) and (min-width: 720px)  landscape phones
+ */
+@media (max-width: 719px) {
+  :root {
+    --gutter-x: max(8px, env(safe-area-inset-left), env(safe-area-inset-right));
+    --gutter-top: max(8px, env(safe-area-inset-top));
+    --gutter-bottom: max(8px, env(safe-area-inset-bottom));
+    --build-bar-h: 176px;
+  }
+}
+@media (max-height: 500px) and (min-width: 720px) {
+  :root {
+    --gutter-x: max(8px, env(safe-area-inset-left), env(safe-area-inset-right));
+    --gutter-top: max(8px, env(safe-area-inset-top));
+    --gutter-bottom: max(8px, env(safe-area-inset-bottom));
+    --build-bar-h: 96px;
+  }
+}
+
+/* Where the Pixi minimap draws (see render/minimap.ts). */
+.minimap-slot {
+  position: absolute;
+  right: var(--gutter-x);
+  bottom: var(--gutter-bottom);
+  width: 168px;
+  height: 168px;
+  pointer-events: none;
+}
+@media (max-width: 719px) {
+  .minimap-slot {
+    top: calc(var(--gutter-top) + 186px);
+    bottom: auto;
+    width: 104px;
+    height: 104px;
+  }
+}
+@media (max-height: 500px) and (min-width: 720px) {
+  .minimap-slot {
+    width: 96px;
+    height: 96px;
+  }
 }
 
 .hud-label {

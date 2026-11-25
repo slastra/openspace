@@ -11,6 +11,8 @@
   import ReconnectOverlay from "./ReconnectOverlay.svelte";
   import OnboardingHint from "./OnboardingHint.svelte";
   import SoundToggle from "./SoundToggle.svelte";
+  import TouchControls from "./TouchControls.svelte";
+  import { isTouch } from "./device.js";
 
   let { onRespawn, onEmote, onPress, onRelease }: {
     onRespawn: () => void;
@@ -21,9 +23,15 @@
   } = $props();
 </script>
 
+<!-- Layout anchor for the Pixi minimap: CSS decides where it goes and how
+     big it is per breakpoint; render/minimap.ts follows this box. -->
+<div class="minimap-slot" aria-hidden="true"></div>
 <PlayerList />
 <StatsPanel />
 <SoundToggle />
+{#if isTouch}
+  <TouchControls {onPress} {onRelease} />
+{/if}
 <BuildHud {onPress} {onRelease} />
 <Status />
 <OnboardingHint />

@@ -15,12 +15,14 @@
   .hint {
     position: absolute;
     left: 50%;
-    bottom: calc(var(--build-bar-h, 112px) + 26px);
+    bottom: calc(var(--gutter-bottom) + var(--build-bar-h) + 12px);
     transform: translateX(-50%);
     display: flex;
     align-items: center;
     gap: 10px;
-    max-width: min(560px, calc(100vw - 32px));
+    width: max-content;
+    max-width: min(560px, calc(100vw - 2 * var(--gutter-x)));
+    box-sizing: border-box;
     padding: 9px 16px;
     background: var(--panel-bg);
     border: 1px solid rgba(74, 222, 128, 0.4);
@@ -54,6 +56,12 @@
   @keyframes blink {
     50% {
       opacity: 0.35;
+    }
+  }
+  @media (max-width: 719px), (max-height: 500px) {
+    .hint {
+      font-size: 13px;
+      padding: 7px 12px;
     }
   }
 </style>

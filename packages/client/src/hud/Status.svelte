@@ -12,7 +12,7 @@
 <style>
   .banner {
     position: absolute;
-    top: 14px;
+    top: var(--gutter-top);
     left: 50%;
     transform: translateX(-50%);
     padding: 6px 16px;
@@ -37,5 +37,16 @@
     color: #fde68a;
     /* Shift down if both banners are visible. */
     margin-top: 36px;
+  }
+  @media (max-width: 719px) {
+    .banner {
+      top: calc(var(--gutter-top) + 126px);
+      width: max-content;
+      max-width: calc(100vw - 2 * var(--gutter-x) - 120px);
+      box-sizing: border-box;
+      white-space: normal;
+      text-align: center;
+      font-size: 11px;
+    }
   }
 </style>

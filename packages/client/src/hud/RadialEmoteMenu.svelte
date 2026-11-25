@@ -29,7 +29,7 @@
   let cursorY = $state(0);
 
   let selected = $derived.by<EmoteKind | null>(() => {
-    if (!hud.emoteMenu) return null;
+    if (!hud.emoteMenu || hud.emoteMenu.tap) return null;
     const dx = cursorX - hud.emoteMenu.x;
     const dy = cursorY - hud.emoteMenu.y;
     const dist = Math.hypot(dx, dy);
@@ -41,8 +41,16 @@
     return EMOTE_KINDS[idx % EMOTE_KINDS.length] ?? null;
   });
 
+  // Touch "tap mode" (opened from the emote button): wedges are buttons and
+  // a tap anywhere else closes the wheel.
+  function pick(kind: EmoteKind, ev: PointerEvent) {
+    ev.stopPropagation();
+    hud.emoteMenu = null;
+    onEmote(kind);
+  }
+
   $effect(() => {
-    if (!hud.emoteMenu) return;
+    if (!hud.emoteMenu || hud.emoteMenu.tap) return;
     cursorX = hud.emoteMenu.x;
     cursorY = hud.emoteMenu.y;
     const onMove = (ev: PointerEvent) => {
@@ -73,9 +81,13 @@
   }
 </script>
 
+{#if hud.emoteMenu?.tap}
+  <div class="backdrop" role="presentation" onpointerdown={() => (hud.emoteMenu = null)}></div>
+{/if}
 {#if hud.emoteMenu}
   <div
     class="radial"
+    class:tap={hud.emoteMenu.tap}
     style="left: {hud.emoteMenu.x}px; top: {hud.emoteMenu.y}px"
   >
     <div class="center" class:armed={selected !== null}></div>
@@ -87,6 +99,9 @@
         class:hot={selected === kind}
         style="transform: translate({pos.x - WEDGE_RADIUS}px, {pos.y - WEDGE_RADIUS}px)"
         title={pres.label}
+        role="button"
+        tabindex="-1"
+        onpointerdown={(ev) => pick(kind, ev)}
       >
         <span class="glyph">{pres.glyph}</span>
       </div>
@@ -100,6 +115,17 @@
     pointer-events: none;
     user-select: none;
     z-index: 50;
+  }
+  .backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 49;
+    background: rgba(10, 14, 26, 0.3);
+    touch-action: none;
+  }
+  .radial.tap .wedge {
+    pointer-events: auto;
+    cursor: pointer;
   }
   .center {
     position: absolute;

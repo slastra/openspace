@@ -218,6 +218,16 @@ export function startGame({ renderer, input, net }: GameDeps) {
     recycling = false;
   };
   input.onKeyTap("Escape", cancelModes);
+  // Scroll to zoom (clamped to what the server streams; see camera.ts).
+  renderer.app.canvas.addEventListener(
+    "wheel",
+    (ev) => {
+      ev.preventDefault();
+      renderer.camera.zoomBy(Math.exp(-ev.deltaY * 0.0015));
+    },
+    { passive: false },
+  );
+  input.onPinch((factor) => renderer.camera.zoomBy(factor));
   input.onKeyTap("KeyM", () => {
     hud.muted = sfx.toggleMute();
   });
@@ -752,6 +762,8 @@ export function startGame({ renderer, input, net }: GameDeps) {
       placementGhost.setBlocked(block ? PLACE_BLOCK_TEXT[block] : null);
     }
     placementGhost.tick(dt);
+    input.releaseClicks = placing !== null || recycling;
+    hud.inMode = placing !== null || recycling;
 
     // Recycle-mode visuals: pulse owned structures to make them obvious targets.
     // Pulse uses a sin wave so it's a soft strobe rather than a hard flash.
@@ -766,9 +778,13 @@ export function startGame({ renderer, input, net }: GameDeps) {
       for (const s of structures.values()) s.view.container.alpha = 1;
     }
     hud.modeHint = recycling
-      ? "Recycle · click a structure to reclaim · Esc to cancel"
+      ? isTouch
+        ? "Recycle · tap a structure to reclaim"
+        : "Recycle · click a structure to reclaim · Esc to cancel"
       : placing
-        ? `Place ${placing} · click to build · Esc to cancel`
+        ? isTouch
+          ? `Place ${placing} · tap, or drag and lift`
+          : `Place ${placing} · click to build · Esc to cancel`
         : "";
 
     pushHudUpdates(localUnitCounts, localStructureCounts, localUnitTotal, local, placing);

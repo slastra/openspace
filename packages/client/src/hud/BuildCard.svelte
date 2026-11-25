@@ -1,6 +1,7 @@
 <script lang="ts">
   import { hud, type BlockReason } from "./hudState.svelte.js";
   import { kindInfo } from "./kindInfo.js";
+  import { isTouch } from "./device.js";
 
   let {
     kind,
@@ -75,7 +76,7 @@
   onpointercancel={up}
   onlostpointercapture={up}
 >
-  <span class="keycap">{hotkey}</span>
+  {#if !isTouch}<span class="keycap">{hotkey}</span>{/if}
   <span class="cost" class:short={reason === "credits"}>{cost}</span>
   <div class="icon" bind:this={iconHost}></div>
   {#if count > 0}<span class="count">{count}</span>{/if}

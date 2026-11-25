@@ -82,7 +82,7 @@
 <style>
   .feed {
     position: absolute;
-    top: 16px;
+    top: calc(var(--gutter-top) + 2px);
     left: 50%;
     transform: translateX(-50%);
     display: flex;
@@ -149,5 +149,21 @@
     color: #fecaca;
     font-weight: 700;
     letter-spacing: 0.16em;
+  }
+  @media (max-width: 719px) {
+    /* Left column under the player list, clear of the minimap. */
+    .feed {
+      top: calc(var(--gutter-top) + 126px);
+      left: var(--gutter-x);
+      transform: none;
+      align-items: flex-start;
+    }
+    .toast {
+      font-size: 12px;
+      padding: 4px 10px;
+    }
+    .toast:nth-child(n + 4) {
+      display: none;
+    }
   }
 </style>

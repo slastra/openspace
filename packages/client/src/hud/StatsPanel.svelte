@@ -107,8 +107,8 @@
 <style>
   .stats {
     position: absolute;
-    top: 14px;
-    right: 18px;
+    top: var(--gutter-top);
+    right: var(--gutter-x);
     width: 208px;
     padding: 12px 14px 14px;
     box-sizing: border-box;
@@ -261,5 +261,25 @@
   }
   .fill.supply.full {
     background: var(--danger);
+  }
+  @media (max-width: 719px), (max-height: 500px) {
+    .stats {
+      width: 150px;
+      padding: 8px 10px 10px;
+      gap: 6px;
+    }
+    .place-value,
+    .fleet-value {
+      font-size: 18px;
+    }
+    .minerals {
+      padding: 4px 8px;
+    }
+    .mineral-value {
+      font-size: 14px;
+    }
+    .track {
+      height: 6px;
+    }
   }
 </style>

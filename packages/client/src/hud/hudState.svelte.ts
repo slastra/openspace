@@ -92,7 +92,9 @@ class HudState {
    *  RadialEmoteMenu component renders + tracks pointer to pick wedge,
    *  fires onEmote on release if past dead zone. Cleared by the
    *  component itself on pointerup. */
-  emoteMenu = $state<{ x: number; y: number } | null>(null);
+  emoteMenu = $state<{ x: number; y: number; tap?: boolean } | null>(null);
+  /** Placement or recycle mode active (drives the touch Cancel button). */
+  inMode = $state(false);
 
   /** Connection lifecycle, drives ReconnectOverlay:
    *  - "connected": normal play, overlay hidden

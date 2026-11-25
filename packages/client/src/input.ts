@@ -42,7 +42,17 @@ export interface InputState {
    * drag the menu closes silently.
    */
   onRightDown(handler: (x: number, y: number) => void): () => void;
+  /** Two-finger pinch on a touch screen: `factor` > 1 spreads (zoom in). */
+  onPinch(handler: (factor: number) => void): () => void;
+  /** Touch only: when true, lifting a finger always counts as a click at
+   *  the lift point (placement mode: drag the ghost, lift to place). When
+   *  false only a short tap clicks, so steering drags don't select things. */
+  releaseClicks: boolean;
 }
+
+/** A touch that lasts less than this and moves less than TAP_SLOP_PX is a tap. */
+const TAP_MAX_MS = 260;
+const TAP_SLOP_PX = 14;
 
 export function createInput(app: Application): InputState {
   const canvas = app.canvas;
@@ -53,17 +63,103 @@ export function createInput(app: Application): InputState {
   const clickHandlers = new Set<(x: number, y: number) => void>();
   const rightClickHandlers = new Set<() => void>();
   const rightDownHandlers = new Set<(x: number, y: number) => void>();
+  const pinchHandlers = new Set<(factor: number) => void>();
+
+  // Touch: the first finger steers (like the mouse cursor) while held; a
+  // quick tap is a click; two fingers pinch-zoom and pause steering.
+  interface Touch {
+    x: number;
+    y: number;
+    startX: number;
+    startY: number;
+    startAt: number;
+  }
+  const touches = new Map<number, Touch>();
+  let steerId: number | null = null;
+  let pinchDist = 0;
+
+  const local = (ev: PointerEvent) => {
+    const rect = canvas.getBoundingClientRect();
+    return { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
+  };
+  const fireClick = (x: number, y: number) => {
+    for (const fn of clickHandlers) fn(x, y);
+  };
+  const pinchSpan = () => {
+    const [a, b] = [...touches.values()];
+    return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
+  };
+
+  const onTouchDown = (ev: PointerEvent) => {
+    ev.preventDefault();
+    canvas.setPointerCapture(ev.pointerId);
+    const p = local(ev);
+    touches.set(ev.pointerId, { ...p, startX: p.x, startY: p.y, startAt: performance.now() });
+    if (touches.size === 1) {
+      steerId = ev.pointerId;
+      state.screenX = p.x;
+      state.screenY = p.y;
+      state.active = true;
+    } else if (touches.size === 2) {
+      steerId = null;
+      state.active = false;
+      pinchDist = pinchSpan();
+    }
+  };
+  const onTouchMove = (ev: PointerEvent) => {
+    const t = touches.get(ev.pointerId);
+    if (!t) return;
+    const p = local(ev);
+    t.x = p.x;
+    t.y = p.y;
+    if (touches.size >= 2) {
+      const d = pinchSpan();
+      if (pinchDist > 0 && d > 0) for (const fn of pinchHandlers) fn(d / pinchDist);
+      pinchDist = d;
+    } else if (ev.pointerId === steerId) {
+      state.screenX = p.x;
+      state.screenY = p.y;
+      state.active = true;
+    }
+  };
+  const onTouchUp = (ev: PointerEvent) => {
+    const t = touches.get(ev.pointerId);
+    if (!t) return;
+    touches.delete(ev.pointerId);
+    const wasSteer = ev.pointerId === steerId;
+    if (wasSteer) {
+      steerId = null;
+      state.active = false;
+      const quick =
+        performance.now() - t.startAt < TAP_MAX_MS &&
+        Math.hypot(t.x - t.startX, t.y - t.startY) < TAP_SLOP_PX;
+      if (ev.type === "pointerup" && (quick || state.releaseClicks)) fireClick(t.x, t.y);
+    }
+    if (touches.size < 2) pinchDist = 0;
+    // Lifting one finger of a pinch hands steering back to the other.
+    if (touches.size === 1 && steerId === null) {
+      const [id, rest] = [...touches.entries()][0]!;
+      steerId = id;
+      rest.startAt = 0; // never a tap
+      state.screenX = rest.x;
+      state.screenY = rest.y;
+      state.active = true;
+    }
+  };
 
   const onMove = (ev: PointerEvent) => {
-    const rect = canvas.getBoundingClientRect();
-    state.screenX = ev.clientX - rect.left;
-    state.screenY = ev.clientY - rect.top;
+    if (ev.pointerType === "touch") return onTouchMove(ev);
+    const p = local(ev);
+    state.screenX = p.x;
+    state.screenY = p.y;
     state.active = true;
   };
-  const onLeave = () => {
+  const onLeave = (ev: PointerEvent) => {
+    if (ev.pointerType === "touch") return;
     state.active = false;
   };
-  const onEnter = () => {
+  const onEnter = (ev: PointerEvent) => {
+    if (ev.pointerType === "touch") return;
     state.active = true;
   };
   const pressKey = (code: string) => {
@@ -90,6 +186,7 @@ export function createInput(app: Application): InputState {
   };
 
   const onClick = (ev: PointerEvent) => {
+    if (ev.pointerType === "touch") return onTouchDown(ev);
     if (ev.button === 0) {
       const rect = canvas.getBoundingClientRect();
       const x = ev.clientX - rect.left;
@@ -112,6 +209,10 @@ export function createInput(app: Application): InputState {
   canvas.addEventListener("pointerenter", onEnter);
   canvas.addEventListener("pointerdown", onClick);
   canvas.addEventListener("contextmenu", onContextMenu);
+  canvas.addEventListener("pointerup", onTouchUp);
+  canvas.addEventListener("pointercancel", onTouchUp);
+  // No browser panning/zooming/scrolling over the game.
+  canvas.style.touchAction = "none";
   // Listen on window so the page doesn't need focus on the canvas itself.
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
@@ -162,6 +263,11 @@ export function createInput(app: Application): InputState {
     },
     press: pressKey,
     release: releaseKey,
+    onPinch(handler) {
+      pinchHandlers.add(handler);
+      return () => pinchHandlers.delete(handler);
+    },
+    releaseClicks: false,
   };
   return state;
 }
