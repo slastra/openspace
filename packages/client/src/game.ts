@@ -861,13 +861,10 @@ function canPlace(
   for (const s of structures.values()) {
     if (s.view.container.x === snapX && s.view.container.y === snapY) return false;
   }
+  // Mirrors the server's trap check: only an enemy ship can be trapped
+  // inside a new structure, since our own ship passes through ours.
   const reach = meta.halfExtent + PLAYER_CONTACT_RADIUS;
   const reachSq = reach * reach;
-  if (local && local.hp > 0) {
-    const dx = local.prediction.position.x - snapX;
-    const dy = local.prediction.position.y - snapY;
-    if (dx * dx + dy * dy < reachSq) return false;
-  }
   for (const r of remotes.values()) {
     if (r.hp <= 0) continue;
     const dx = r.renderedX - snapX;
@@ -899,11 +896,12 @@ function canPlace(
 }
 
 /**
- * Stream every solid obstacle the client knows about so the local-player
- * predictor can resolve overlap before drift triggers a snap-back. Structures
- * use ball colliders server-side (matches the asteroid model) so we hand
- * the predictor the exact same radius — predictor and server agree on where
- * the ship stops, no jitter.
+ * Stream every obstacle that blocks the local ship so the predictor can
+ * resolve overlap before drift triggers a snap-back: asteroids and *enemy*
+ * structures. Our own structures let our ship through on the server
+ * (owner-passthrough collision groups), so they're skipped here.
+ * Non-wall structures use ball colliders server-side, so the predictor gets
+ * the exact same radius.
  */
 function* worldObstacles(
   asteroids: Map<string, Asteroid>,
@@ -914,19 +912,9 @@ function* worldObstacles(
     yield { x: a.view.container.x, y: a.view.container.y, radius: a.radius };
   }
   for (const s of structures.values()) {
+    if (s.ownerId === localSessionId) continue;
     const meta = STRUCTURE_KIND_META[s.kind];
     if (!meta) continue;
-    // Server gives our walls (cuboid + owner-passthrough filter) a free
-    // pass for our own ship — mirror that here so the local predictor
-    // doesn't bounce the ship off a wall the server is letting it through.
-    // Only walls have the passthrough filter; supplies/turrets/bases keep
-    // the default collide-with-everyone group.
-    if (
-      meta.colliderShape === "cuboid" &&
-      s.ownerId === localSessionId
-    ) {
-      continue;
-    }
     yield {
       x: s.view.container.x,
       y: s.view.container.y,

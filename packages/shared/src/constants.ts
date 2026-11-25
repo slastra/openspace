@@ -76,8 +76,6 @@ export const COLLISION_DAMAGE_PER_SPEED = 0.02;
 export const COLLISION_DAMAGE_MIN = 1;
 /** Cap — prevents pathological burst damage from any solver-induced velocity spike. */
 export const COLLISION_DAMAGE_MAX = 20;
-/** Damping coefficient applied to dynamic body linear velocity (Rapier units). */
-export const LINEAR_DAMPING = 2.0;
 
 export const ROOM_NAME = "arena";
 export const SERVER_PORT = 2567;

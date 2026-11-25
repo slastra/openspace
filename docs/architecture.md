@@ -49,12 +49,14 @@ packages/client/
   Each tick: write desired velocities, step, drain contact events for
   damage, read positions back into the schema.
 - **Owner-bit collision groups.** Each player gets one of 15 bits at
-  join (freed at leave). Walls filter that bit out of their collision
-  mask, so the wall's owner (units, ship, projectiles) pass through
-  freely while enemies still bounce off. This sidesteps pathfinding
-  entirely: units inside a wall ring flow out to engage; respawn at base
-  isn't trapped by your own walls. Bit transfer is wired into wreckage
-  claim too: claimed units re-collide against their new owner's walls.
+  join (freed at leave). Every structure filters its owner's bit out of
+  its collision mask, so the owner's units, ship, and projectiles pass
+  through freely while enemies still bounce off. This sidesteps
+  pathfinding entirely: units inside a wall ring flow out to engage,
+  units spawn at the base center without being shoved out, and a
+  formation orbiting home flows through its own buildings. Bit transfer
+  is wired into wreckage claim too: claimed units re-collide against
+  their new owner's structures.
 - **Client predicts the local ship** kinematically (no Rapier in the
   browser bundle) using `stepPlayer` from shared. Reconcile snaps to
   authority when drift exceeds threshold. The predictor's obstacle

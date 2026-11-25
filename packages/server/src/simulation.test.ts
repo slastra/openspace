@@ -5,6 +5,34 @@ import { createTestWorld } from "./testWorld.js";
 /** One tick of full-speed travel for a ship with no fleet drag. */
 const STEP = PLAYER_SPEED * TICK_DT;
 
+describe("physics", () => {
+  it("moves the server ship exactly as fast as stepPlayer predicts", async () => {
+    const w = await createTestWorld();
+    const p = w.addPlayer("a", 3000, 3000);
+    for (let i = 0; i < 60; i++) {
+      w.pushInput("a", 9000, 3000);
+      w.tick();
+    }
+    expect(p.x - 3000).toBeCloseTo(60 * STEP, 3);
+  });
+
+  it("lets the owner's ship fly through its own base but blocks an enemy", async () => {
+    const w = await createTestWorld();
+    const own = w.addPlayer("a", 3000, 3000);
+    const enemy = w.addPlayer("b", 3000, 3300);
+    w.addStructure("a", "base", 3100, 3000);
+    w.addStructure("a", "base", 3100, 3300);
+    // Enemy spawn invuln is irrelevant here; we only check positions.
+    for (let i = 0; i < 30; i++) {
+      w.pushInput("a", 9000, 3000);
+      w.pushInput("b", 9000, 3300);
+      w.tick();
+    }
+    expect(own.x).toBeGreaterThan(3200); // passed through
+    expect(enemy.x).toBeLessThan(3100); // stopped at the base's rim
+  });
+});
+
 describe("player input consumption", () => {
   it("moves one step per input and acks one input per tick", async () => {
     const w = await createTestWorld();

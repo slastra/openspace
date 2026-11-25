@@ -27,9 +27,9 @@ You start with a free base (Q) and a small credit pile. Drop the base to
 unlock unit production: units spawn at your base and respawn there on
 death. Mine asteroids with miners (per-tick drip while attached), spend
 credits on units and structures, and your base projects a 600u
-**territorial claim** that blocks enemies from building near you. Walls
-are one-way: your own units, ship, and projectiles pass through your
-walls; enemies are stopped. The world center has a no-build spawn
+**territorial claim** that blocks enemies from building near you. Your
+buildings are one-way: your own units, ship, and projectiles pass
+through them; enemies are stopped. The world center has a no-build spawn
 bubble and fresh ships get **20s of spawn invulnerability**. Lose your
 ship and you drop a gold wreckage square holding your credits +
 orphaned units. First player to touch it claims everything (expires
@@ -55,17 +55,18 @@ after 30s).
   The collision-group mask is derived from this; raising the cap past
   16 requires switching the bit packing strategy (Rapier groups are
   16+16 bits).
-- **Local predictor and owner walls**: `worldObstacles` in `game.ts`
-  takes the local sessionId so it can skip the local player's own
-  cuboid walls. Without that, prediction collides with walls the
-  server lets you pass through, producing constant reconciles.
+- **Local predictor and owned structures**: `worldObstacles` in
+  `game.ts` takes the local sessionId so it can skip every structure
+  the local player owns. Without that, prediction collides with
+  buildings the server lets you pass through, producing constant
+  reconciles.
 
 ## How it works
 
 The server runs the whole simulation in Rapier and syncs it to clients
 through Colyseus; each client only sees entities near its ship. The
 client predicts its own ship with the shared `stepPlayer` and
-interpolates everything else. Walls let their owner through by giving
+interpolates everything else. Structures let their owner through by giving
 each player a collision-group bit, which sidesteps pathfinding.
 [docs/architecture.md](docs/architecture.md) has the package layout and
 the authority, combat and event details.

@@ -1,5 +1,5 @@
 import RAPIER from "@dimforge/rapier2d-compat";
-import { LINEAR_DAMPING, MAX_PLAYERS_PER_ROOM, TICK_DT } from "@openspace/shared";
+import { MAX_PLAYERS_PER_ROOM, TICK_DT } from "@openspace/shared";
 
 // Rapier's InteractionGroups packs memberships+filter into a u32 (16 bits
 // each). We dedicate one bit per player slot for the wall passthrough
@@ -75,8 +75,6 @@ export interface BodyOptions {
   x: number;
   y: number;
   radius: number;
-  /** Linear damping; defaults to LINEAR_DAMPING from constants. */
-  damping?: number;
   /** Restitution (bounciness). Default 0 — no bounce. */
   restitution?: number;
   /** Collider density. Default 1. Bumping this for the player ship makes
@@ -101,8 +99,8 @@ export interface BodyOptions {
  *   `(A.memberships & B.filter) != 0 && (B.memberships & A.filter) != 0`.
  *
  * Owner-passthrough plan: every player gets one of bits 0..14 as their
- * "owner bit." Walls owned by player X have a filter that EXCLUDES X's
- * bit, so any dynamic body whose membership equals X's bit (X's own
+ * "owner bit." Structures owned by player X have a filter that EXCLUDES
+ * X's bit, so any dynamic body whose membership equals X's bit (X's own
  * units / ship) doesn't collide. Enemy bodies have different bits and
  * still collide normally.
  */
@@ -131,10 +129,10 @@ function unitOwnerGroups(ownerBit: number): number {
   return makeGroups(1 << ownerBit, PLAYER_BITS_MASK & ~(1 << ownerBit));
 }
 
-/** Wall filter excludes its owner's bit so the owner's units / ship pass
- *  through. Non-owner dynamic bodies have other membership bits and are
- *  still blocked. */
-function wallOwnerFilterGroups(ownerBit: number): number {
+/** Structure filter excludes its owner's bit so the owner's units / ship
+ *  pass through every building they own. Non-owner dynamic bodies have
+ *  other membership bits and are still blocked. */
+function ownerPassthroughGroups(ownerBit: number): number {
   return makeGroups(PLAYER_BITS_MASK, PLAYER_BITS_MASK & ~(1 << ownerBit));
 }
 
@@ -147,9 +145,11 @@ export function addCombatantBody(
   phys: PhysicsWorld,
   opts: BodyOptions,
 ): { body: RAPIER.RigidBody; colliderHandle: number } {
+  // No linear damping: every combatant's velocity is commanded each tick
+  // (setLinvel), so damping only made bodies travel slower than commanded
+  // and the server ship slower than the client's stepPlayer prediction.
   const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
     .setTranslation(opts.x, opts.y)
-    .setLinearDamping(opts.damping ?? LINEAR_DAMPING)
     .lockRotations(); // Top-down ships don't spin under physics; rotation is a render-only concept.
   const body = phys.world.createRigidBody(bodyDesc);
 
@@ -191,8 +191,8 @@ export function addStructureBody(
     y: number;
     radius: number;
     shape?: "ball" | "cuboid";
-    /** Owner slot bit. Only meaningful for walls (cuboid + owner-passthrough);
-     *  ignored for structures with no owner-bit semantics. */
+    /** Owner slot bit. The owner's ship and units pass through the
+     *  structure; everyone else collides with it. */
     ownerBit?: number;
   },
 ): { body: RAPIER.RigidBody; colliderHandle: number } {
@@ -203,13 +203,11 @@ export function addStructureBody(
     shape === "cuboid"
       ? RAPIER.ColliderDesc.cuboid(opts.radius, opts.radius)
       : RAPIER.ColliderDesc.ball(opts.radius);
-  // Only walls (cuboid) get the owner-pass-through filter today. Other
-  // structures keep the default "collide with everything" group so
-  // supplies/turrets/bases still bump same-team units like always.
+  // Every owned structure lets its owner through: units orbiting at home
+  // used to grind against their own base, and fresh units spawned inside
+  // its collider.
   const groups =
-    shape === "cuboid" && opts.ownerBit !== undefined
-      ? wallOwnerFilterGroups(opts.ownerBit)
-      : GROUPS_DEFAULT;
+    opts.ownerBit !== undefined ? ownerPassthroughGroups(opts.ownerBit) : GROUPS_DEFAULT;
   colliderDesc
     .setRestitution(0)
     .setFriction(0.0)

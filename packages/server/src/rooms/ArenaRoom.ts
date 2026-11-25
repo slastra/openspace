@@ -205,14 +205,16 @@ export class ArenaRoom extends Room<{ state: ArenaState }> {
       }
       if (ownedStructures >= MAX_STRUCTURES_PER_PLAYER) return;
       if (meta.maxPerPlayer !== undefined && ownedOfKind >= meta.maxPerPlayer) return;
-      // Reject placement that would trap a live player ship inside the
+      // Reject placement that would trap an enemy ship inside the
       // structure's collider — Rapier can't push a body out of a fixed body
       // it's spawned inside, so the ship would jitter against the wall every
       // tick (and the camera with it) until the player escapes manually.
+      // The builder's own ship passes through their structures, so it can't
+      // be trapped.
       const playerReach = meta.halfExtent + PLAYER_CONTACT_RADIUS;
       const playerReachSq = playerReach * playerReach;
       for (const p of this.state.players.values()) {
-        if (p.hp <= 0) continue;
+        if (p.hp <= 0 || p.id === client.sessionId) continue;
         const dx = p.x - sx;
         const dy = p.y - sy;
         if (dx * dx + dy * dy < playerReachSq) return;
@@ -772,8 +774,8 @@ export class ArenaRoom extends Room<{ state: ArenaState }> {
       y,
       radius: meta.halfExtent,
       shape: meta.colliderShape ?? "ball",
-      // Walls (cuboid) get owner-passthrough — owner's units/ship/projectiles
-      // pass through their own walls. Other structure shapes ignore this.
+      // Owner-passthrough: the owner's ship and units fly through every
+      // structure they own; enemies collide.
       ownerBit: this.ownerBitBySession.get(ownerId),
     });
     this.bodyRefs.set(s.id, ref);
