@@ -1,11 +1,12 @@
-import { INTERPOLATION_DELAY_MS, lerpAngle } from "@openspace/shared";
+import { TICK_MS, clamp, lerpAngle } from "@openspace/shared";
 
 /**
  * Snapshot interpolation for remote entities (players, units).
  *
  * Server snapshots arrive ~20Hz; rendering them as-is looks choppy. We keep
- * a short history and render at (now - INTERPOLATION_DELAY_MS), interpolating
- * between the snapshots that bracket that time.
+ * a short history and render at (now - delay), interpolating between the
+ * snapshots that bracket that time. The delay is adaptive (see
+ * `InterpolationDelay`).
  *
  * Position uses **cubic Hermite** between sample pairs, taking each sample's
  * server-reported velocity (vx, vy) as the tangent. Tangents are clamped via
@@ -64,9 +65,9 @@ export class RemoteInterpolator {
     }
   }
 
-  sample(now: number): { x: number; y: number; rotation: number } | null {
+  /** Pose at `renderTime` (server clock), i.e. server now minus the delay. */
+  sample(renderTime: number): { x: number; y: number; rotation: number } | null {
     if (this.history.length === 0) return null;
-    const renderTime = now - INTERPOLATION_DELAY_MS;
 
     if (renderTime <= this.history[0]!.t) {
       const s = this.history[0]!;
@@ -137,4 +138,50 @@ function hermite(
   const h01 = -2 * s3 + 3 * s2;
   const h11 = s3 - s2;
   return h00 * p0 + h10 * dtSec * t0 + h01 * p1 + h11 * dtSec * t1;
+}
+
+/** Delay floor: two snapshot intervals, so there's always a pair to blend. */
+const MIN_DELAY_MS = 2 * TICK_MS;
+/** Ceiling, so a jitter storm costs smoothness rather than unbounded lag. */
+const MAX_DELAY_MS = 250;
+/** Starting delay, before any jitter has been measured. */
+const INITIAL_DELAY_MS = 150;
+/** Per-snapshot decay of the lateness peak (half-life about 4.6 s at 30 Hz). */
+const LATENESS_DECAY = 0.995;
+/** Headroom on top of the measured lateness peak. */
+const LATENESS_MARGIN = 1.25;
+/** Max slew of the delay in ms per second (render clock runs at most 3%
+ *  slow while the delay grows and 1% fast while it shrinks). */
+const DELAY_RISE_PER_SEC = 30;
+const DELAY_FALL_PER_SEC = 10;
+
+/**
+ * Adaptive interpolation delay. A snapshot stamped T arrives `lateness`
+ * after the client's filtered clock expected it; it is still on time for
+ * rendering while `delay >= TICK_MS + lateness`. So the target is one
+ * tick plus a slowly decaying peak of observed lateness, plus headroom.
+ * The delay slews toward the target gradually so render time never jumps.
+ * On a steady connection it settles near two ticks (~67 ms) instead of a
+ * fixed 150 ms, which shortens how far remote entities and your own
+ * formation trail behind your predicted ship.
+ */
+export class InterpolationDelay {
+  private latenessPeakMs = 0;
+  /** Current delay (ms) to subtract from server time when sampling. */
+  delayMs = INITIAL_DELAY_MS;
+
+  /** Feed one snapshot's lateness: its arrival offset minus the filtered offset. */
+  observe(latenessMs: number) {
+    this.latenessPeakMs = Math.max(Math.max(0, latenessMs), this.latenessPeakMs * LATENESS_DECAY);
+  }
+
+  get targetMs(): number {
+    return clamp(TICK_MS + this.latenessPeakMs * LATENESS_MARGIN, MIN_DELAY_MS, MAX_DELAY_MS);
+  }
+
+  /** Slew toward the target; call once per frame. */
+  advance(dtSeconds: number) {
+    const d = this.targetMs - this.delayMs;
+    this.delayMs += clamp(d, -DELAY_FALL_PER_SEC * dtSeconds, DELAY_RISE_PER_SEC * dtSeconds);
+  }
 }

@@ -20,6 +20,7 @@
       <div class="row"><span>Snap interval</span><span>{fmt(d.snapshotIntervalMeanMs)} / p99 {fmt(d.snapshotIntervalP99Ms)} ms</span></div>
       <div class="row"><span>Server offset</span><span>{fmt(d.serverOffsetMs)} ms</span></div>
       <div class="row"><span>RTT spread</span><span>{fmt(d.rttSpreadMs)} ms</span></div>
+      <div class="row"><span>Interp delay</span><span>{fmt(d.interpDelayMs)} ms</span></div>
     </div>
 
     <div class="section">

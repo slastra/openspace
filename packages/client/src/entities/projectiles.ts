@@ -8,7 +8,7 @@ import { ProjectileSnapshot } from "../net/client.js";
  * Client-side mirror of a server Projectile. Constant-velocity, so we
  * extrapolate position from the latest snapshot anchor instead of
  * snapshot-interpolating with a buffer delay (which would render the
- * bullet ~150ms behind the server's hit, producing visible gaps where
+ * bullet an interpolation delay behind the server's hit, producing visible gaps where
  * the projectile pops out before reaching its target).
  *
  * Re-anchored on every server update so any clock drift between client

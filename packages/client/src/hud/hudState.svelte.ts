@@ -167,6 +167,7 @@ export interface DebugMetrics {
   snapshotsPerSec: number;
   serverOffsetMs: number;
   rttSpreadMs: number;
+  interpDelayMs: number;
   reconcileDriftU: number;
   predictionErrorU: number;
   pendingInputs: number;

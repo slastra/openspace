@@ -7,7 +7,7 @@ import { UnitSnapshot } from "../net/client.js";
  * Client-side mirror of a server Unit. Server-authoritative position lives
  * on the schema and is rendered via snapshot interpolation. No client-side
  * prediction or compensation — units behave purely as physics-driven entities
- * owned by the server, with the standard ~150ms interpolation delay applied
+ * owned by the server, with the adaptive interpolation delay applied
  * uniformly to local-owned and remote-owned units alike.
  */
 export class Unit {
@@ -87,9 +87,9 @@ export class Unit {
   }
 }
 
-export function renderUnits(units: Map<string, Unit>, serverNow: number) {
+export function renderUnits(units: Map<string, Unit>, renderTime: number) {
   for (const unit of units.values()) {
-    const sample = unit.interp.sample(serverNow);
+    const sample = unit.interp.sample(renderTime);
     if (!sample) continue;
     unit.view.container.x = sample.x;
     unit.view.container.y = sample.y;

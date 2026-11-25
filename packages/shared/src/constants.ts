@@ -145,7 +145,6 @@ export const BACKGROUND_COLOR = 0x0a0e1a;
 export const GRID_COLOR = 0x103040;
 export const GRID_SPACING = 100;
 
-export const INTERPOLATION_DELAY_MS = 150;
 /** Drift between local prediction and server authority above which we snap
  *  the visible position rather than smooth-correct via the error vector.
  *  Tuned for VPS RTT: at PLAYER_SPEED 300 u/s with ~30ms one-way latency,

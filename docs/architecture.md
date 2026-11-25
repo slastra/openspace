@@ -61,13 +61,15 @@ packages/client/
 - **Client predicts the local ship** kinematically (no Rapier in the
   browser bundle) using `stepPlayer` from shared. Reconcile snaps to
   authority when drift exceeds threshold. The predictor's obstacle
-  list excludes the local player's own walls so prediction agrees with
-  the server's owner-bit filter.
-- **Remote ships and units interpolate** server snapshots ~150ms behind
-  server time. Bullets *extrapolate* from the latest snapshot anchor so
+  list excludes every structure the local player owns, so prediction
+  agrees with the server's owner-bit filter.
+- **Remote ships and units interpolate** server snapshots an adaptive
+  delay behind server time (`InterpolationDelay`: one tick plus the
+  recent peak of snapshot lateness, floor two ticks, ~67 ms on a steady
+  link, slewed gradually so render time never jumps). Bullets *extrapolate* from the latest snapshot anchor so
   hits land where the server saw them, with no interpolation lag.
 - **Density-based mass**: ship density 12 vs unit density 1, so heavy
-  ships glide through unit clusters without jitter.
+  ships shove enemy units aside (own units pass through the ship).
 - **Area-of-interest** filtering via Colyseus StateView: each client
   only sees entities within ~1500u of its ship (with hysteresis to kill
   edge-flicker).

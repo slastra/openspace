@@ -184,8 +184,10 @@ export class RemotePlayer {
     this.shieldFraction = snap.maxShield > 0 ? snap.shield / snap.maxShield : 0;
   }
 
-  render(serverNow: number) {
-    const s = this.interp.sample(serverNow);
+  /** `renderTime` is the interpolation time (server now minus the delay);
+   *  `serverNow` drives the spawn-invulnerability blink. */
+  render(renderTime: number, serverNow: number) {
+    const s = this.interp.sample(renderTime);
     if (!s) return;
     this.ship.container.x = s.x;
     this.ship.container.y = s.y;

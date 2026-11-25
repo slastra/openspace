@@ -16,6 +16,7 @@ import { InputState } from "./input.js";
 import { NetClient } from "./net/client.js";
 import { LocalPlayer, RemotePlayer } from "./entities/players.js";
 import { Unit, renderUnits } from "./entities/units.js";
+import { InterpolationDelay } from "./interpolation.js";
 import { Asteroid, tickAsteroids } from "./entities/asteroids.js";
 import { Projectile, renderProjectiles } from "./entities/projectiles.js";
 import { Structure } from "./entities/structures.js";
@@ -120,6 +121,7 @@ export function startGame({ renderer, input, net }: GameDeps) {
   const snapshotIntervals: number[] = [];
   const snapshotArrivalTimes: number[] = [];
   let lastSeenServerTime = 0;
+  const interpDelay = new InterpolationDelay();
   const updateOffset = (snapServerTime: number) => {
     // Colyseus delivers each changed entity in a snapshot through its own
     // callback, so this runs once per entity with the same `now` and
@@ -132,10 +134,13 @@ export function startGame({ renderer, input, net }: GameDeps) {
     const offset = now - snapServerTime;
     if (serverOffset === null) {
       serverOffset = offset;
-    } else if (offset > serverOffset) {
-      serverOffset = serverOffset * 0.9 + offset * 0.1;
     } else {
-      serverOffset = serverOffset * 0.99 + offset * 0.01;
+      interpDelay.observe(offset - serverOffset);
+      if (offset > serverOffset) {
+        serverOffset = serverOffset * 0.9 + offset * 0.1;
+      } else {
+        serverOffset = serverOffset * 0.99 + offset * 0.01;
+      }
     }
     if (lastSeenServerTime !== 0) {
       pushBounded(snapshotIntervals, snapServerTime - lastSeenServerTime, 60);
@@ -646,8 +651,10 @@ export function startGame({ renderer, input, net }: GameDeps) {
     }
     renderer.camera.apply();
 
-    for (const r of remotes.values()) r.render(serverNow);
-    renderUnits(units, serverNow);
+    interpDelay.advance(dt);
+    const renderTime = serverNow - interpDelay.delayMs;
+    for (const r of remotes.values()) r.render(renderTime, serverNow);
+    renderUnits(units, renderTime);
     renderProjectiles(projectiles, serverNow);
     tickAsteroids(asteroids, dt);
     tickWreckages(wreckages, dt);
@@ -676,6 +683,7 @@ export function startGame({ renderer, input, net }: GameDeps) {
           snapshotArrivalTimes: snapshotArrivalTimes.slice(),
           offsetSamples,
           serverOffset,
+          interpDelayMs: interpDelay.delayMs,
           local,
           unitsCount: units.size,
           asteroidsCount: asteroids.size,
@@ -1014,6 +1022,7 @@ interface DebugInputs {
   snapshotArrivalTimes: number[];
   offsetSamples: number[];
   serverOffset: number | null;
+  interpDelayMs: number;
   local: LocalPlayer | null;
   unitsCount: number;
   asteroidsCount: number;
@@ -1041,6 +1050,7 @@ function collectDebugMetrics(d: DebugInputs): DebugMetrics {
     snapshotsPerSec: snapshotsLastSec,
     serverOffsetMs: d.serverOffset ?? 0,
     rttSpreadMs: offsetMax - offsetMin,
+    interpDelayMs: d.interpDelayMs,
     reconcileDriftU: d.local?.prediction.lastReconcileDrift ?? 0,
     predictionErrorU: d.local?.prediction.errorMagnitude ?? 0,
     pendingInputs: d.local?.prediction.pendingInputCount ?? 0,
