@@ -82,7 +82,8 @@ async function spawnBot(id: number): Promise<BotStats> {
       const targetX = WORLD_WIDTH / 2 + Math.cos(angle) * orbitRadius;
       const targetY = WORLD_HEIGHT / 2 + Math.sin(angle) * orbitRadius;
       seq++;
-      room.send("input", { seq, targetX, targetY });
+      // fleet 0: the server floors it at the bot's real recent unit count.
+      room.send("input", { seq, targetX, targetY, dash: false, fleet: 0 });
       stats.inputsSent++;
 
       const now = Date.now();

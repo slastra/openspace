@@ -1,6 +1,5 @@
 import {
   BASE_CLAIM_RADIUS_U,
-  DASH_SPEED_MULTIPLIER,
   EmoteKind,
   SPAWN_BUBBLE_RADIUS_U,
   WORLD_HEIGHT,
@@ -10,7 +9,6 @@ import {
   UNIT_SPAWN_COOLDOWN_MS,
   StructureKindName,
   UNIT_KIND_META,
-  playerFleetDragFactor,
   snapToGrid,
 } from "@openspace/shared";
 import { Renderer } from "./render/renderer.js";
@@ -163,18 +161,14 @@ export function startGame({ renderer, input, net }: GameDeps) {
   input.onKeyTap("F1", () => debug.toggle());
   // Spacebar: tap = recall fleet AND start sustained dash thrust. Hold to
   // keep dashing — every owned unit takes engine-wash damage while held.
-  // Release to stop. Local `dashHeld` drives prediction immediately so the
-  // ship's boosted velocity matches what the server is about to compute.
+  // Release to stop. `dashHeld` is stamped onto every input sent while held.
   let dashHeld = false;
   input.onKeyTap("Space", () => {
     dashHeld = true;
     net.recall();
-    net.dashStart();
   });
   input.onKeyUp("Space", () => {
-    if (!dashHeld) return;
     dashHeld = false;
-    net.dashEnd();
   });
   input.onKeyTap("KeyQ", () => {
     placing = placing === "base" ? null : "base";
@@ -638,16 +632,10 @@ export function startGame({ renderer, input, net }: GameDeps) {
         const target = placing || recycling
           ? local.prediction.position
           : cursorTarget(local, input, renderer);
-        // Local key state drives prediction immediately for snappy feel; the
-        // schema's `dashing` mirror is updated by the server within a tick.
-        // Both converge — prediction never disagrees with authority once the
-        // round-trip completes. Fleet-drag uses the synced ownedUnitCount
-        // (server-authoritative, ~1 tick lag) so client + server agree on
-        // the speed factor and reconcile doesn't churn on big swarms.
-        const dashMult = dashHeld || local.dashing ? DASH_SPEED_MULTIPLIER : 1;
-        const fleetMult = playerFleetDragFactor(local.ownedUnitCount);
-        const speedMultiplier = dashMult * fleetMult;
-        const stepped = local.step(dt, target, speedMultiplier, serverNow);
+        // Dash rides on each input (see PlayerInput.dash), so the key state
+        // drives prediction immediately and the server applies it to the
+        // very same inputs.
+        const stepped = local.step(dt, target, dashHeld, serverNow);
         for (const i of stepped.inputs) net.send(i);
         renderer.camera.setTarget(stepped.x, stepped.y);
       } else {

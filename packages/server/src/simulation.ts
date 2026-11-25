@@ -23,7 +23,6 @@ import {
   Wreckage,
   wreckageHalfSize,
   DASH_FLEET_BURN_DPS,
-  DASH_SPEED_MULTIPLIER,
   STRUCTURE_KIND_META,
   Combatant,
   applyDamage,
@@ -38,7 +37,7 @@ import {
   isUnit,
   lookupCombatant,
   playerDesiredVelocity,
-  playerFleetDragFactor,
+  playerSpeedMultiplier,
   shortestAngleDelta,
   teamOf,
   UNIT_KIND_META,
@@ -208,7 +207,15 @@ const MAX_INPUT_BACKLOG = 3;
 export interface InputCursor {
   last: PlayerInput | null;
   debt: number;
+  /** The player's ownedUnitCount over the last FLEET_HISTORY_TICKS ticks.
+   *  An input's claimed `fleet` is floored at the smallest of these: an
+   *  honest client's count is at most a round trip stale, while a client
+   *  can't claim a smaller fleet than it has had recently to go faster. */
+  fleetHistory: number[];
 }
+
+/** One second of fleet-count history: comfortably longer than a round trip. */
+const FLEET_HISTORY_TICKS = 30;
 
 function applyPlayerInputs(
   state: ArenaState,
@@ -222,9 +229,12 @@ function applyPlayerInputs(
     if (!ref) continue;
     let cursor = cursors.get(sessionId);
     if (!cursor) {
-      cursor = { last: null, debt: 0 };
+      cursor = { last: null, debt: 0, fleetHistory: [] };
       cursors.set(sessionId, cursor);
     }
+
+    cursor.fleetHistory.push(player.ownedUnitCount);
+    if (cursor.fleetHistory.length > FLEET_HISTORY_TICKS) cursor.fleetHistory.shift();
 
     if (player.hp <= 0) {
       for (const input of queue) player.lastProcessedInputSeq = input.seq;
@@ -255,17 +265,18 @@ function applyPlayerInputs(
       player.lastProcessedInputSeq = input.seq;
       cursor.last = input;
     }
-    const latest = input;
 
-    const dashMult = player.dashing ? DASH_SPEED_MULTIPLIER : 1;
-    const fleetMult = playerFleetDragFactor(player.ownedUnitCount);
-    const speedMultiplier = dashMult * fleetMult;
+    // Simulate the input with the dash state and fleet drag the client
+    // predicted it with, so the two can't drift apart at dash press and
+    // release or while dash burn is killing units between snapshots.
+    player.dashing = input.dash;
+    const fleet = Math.max(input.fleet, Math.min(...cursor.fleetHistory));
     const desired = playerDesiredVelocity(
       player.x,
       player.y,
-      latest.targetX,
-      latest.targetY,
-      speedMultiplier,
+      input.targetX,
+      input.targetY,
+      playerSpeedMultiplier(input.dash, fleet),
     );
     setBodyVelocity(ref.body, desired.vx, desired.vy);
     // Face the cursor (desired direction), not the actual velocity. When

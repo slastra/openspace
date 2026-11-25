@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { PLAYER_SPEED, Projectile, TICK_DT, UNIT_KIND_META } from "@openspace/shared";
+import {
+  DASH_FLEET_BURN_DPS,
+  PLAYER_SPEED,
+  PlayerInput,
+  Projectile,
+  TICK_DT,
+  UNIT_KIND_META,
+  playerFleetDragFactor,
+  stepPlayer,
+} from "@openspace/shared";
 import { createTestWorld } from "./testWorld.js";
 
 /** One tick of full-speed travel for a ship with no fleet drag. */
@@ -69,6 +78,55 @@ describe("player input consumption", () => {
     // 10 queued, backlog cap 3: seq 1..7 are acked unsimulated, 8 applies.
     expect(p.lastProcessedInputSeq).toBe(8);
     expect(w.inputQueues.get("a")!.length).toBe(2);
+  });
+});
+
+describe("dash and fleet drag ride on the input", () => {
+  it("dashes exactly the inputs marked dash", async () => {
+    const w = await createTestWorld();
+    const p = w.addPlayer("a", 3000, 3000);
+    const seen: boolean[] = [];
+    for (const dash of [false, true, true, false]) {
+      w.pushInput("a", 9000, 3000, { dash });
+      w.tick();
+      seen.push(p.dashing);
+    }
+    expect(seen).toEqual([false, true, true, false]);
+    expect(p.x - 3000).toBeCloseTo(6 * STEP, 3); // 1 + 2 + 2 + 1
+  });
+
+  it("floors a claimed fleet at the player's recent unit count", async () => {
+    const w = await createTestWorld();
+    const p = w.addPlayer("a", 3000, 3000);
+    p.ownedUnitCount = 120; // drag without simulating 120 bodies
+    w.pushInput("a", 9000, 3000, { fleet: 0 }); // lying: "no fleet"
+    w.tick();
+    expect(p.x - 3000).toBeCloseTo(STEP * playerFleetDragFactor(120), 3);
+  });
+
+  it("matches the client's prediction while dash burn kills units", async () => {
+    const w = await createTestWorld();
+    const p = w.addPlayer("a", 3000, 3000);
+    for (let i = 0; i < 60; i++) w.addUnit("a", "rammer", 3000, 3000);
+    for (let i = 0; i < 30; i++) w.tick();
+    // The client stamps each input with the unit count from its latest
+    // snapshot, which lags the server by a few ticks while units burn.
+    const counts: number[] = [];
+    const sent: PlayerInput[] = [];
+    const start = { x: p.x, y: p.y, rotation: 0 };
+    const burnTicks = Math.ceil((UNIT_KIND_META.rammer!.maxHp / DASH_FLEET_BURN_DPS) / TICK_DT) + 15;
+    for (let i = 0; i < burnTicks; i++) {
+      counts.push(p.ownedUnitCount);
+      const stale = counts[Math.max(0, counts.length - 4)]!;
+      sent.push(w.pushInput("a", 9000, 3000, { dash: true, fleet: stale }));
+      w.tick();
+    }
+    expect(p.ownedUnitCount).toBe(0); // the whole fleet burned up
+    let predicted = start;
+    for (const input of sent) predicted = stepPlayer(predicted, input, TICK_DT);
+    // Rapier stores positions as float32, hence 1 decimal (0.05u).
+    expect(p.x).toBeCloseTo(predicted.x, 1);
+    expect(p.y).toBeCloseTo(predicted.y, 1);
   });
 });
 

@@ -1,4 +1,5 @@
 import {
+  DASH_SPEED_MULTIPLIER,
   MAX_UNITS_PER_PLAYER,
   PLAYER_FLEET_DRAG_FLOOR,
   PLAYER_FULL_SPEED_DIST,
@@ -15,12 +16,17 @@ import type { PlayerInput } from "./types.js";
  * Multiplicative speed factor the captain takes from their own fleet.
  * Linear ramp from 1.0 at zero owned units to PLAYER_FLEET_DRAG_FLOOR at
  * MAX_UNITS_PER_PLAYER, clamped on either side. Composes with the dash
- * multiplier (`dash * fleet`) — server applies it in `applyPlayerInputs`
- * and the client predictor reads the same field off the synced snapshot
- * so prediction stays aligned without re-deriving on the client.
+ * multiplier in `playerSpeedMultiplier`.
  */
 export function playerFleetDragFactor(ownedUnitCount: number): number {
   return lerp(1, PLAYER_FLEET_DRAG_FLOOR, clamp01(ownedUnitCount / MAX_UNITS_PER_PLAYER));
+}
+
+/** Speed multiplier for one input: dash boost times fleet drag. Server
+ *  (`applyPlayerInputs`) and client predictor (`stepPlayer`) both derive it
+ *  from the input's own `dash` and `fleet`, so they can't disagree. */
+export function playerSpeedMultiplier(dash: boolean, fleet: number): number {
+  return (dash ? DASH_SPEED_MULTIPLIER : 1) * playerFleetDragFactor(fleet);
 }
 
 export interface PlayerKinematics {
@@ -46,9 +52,8 @@ export function playerDesiredVelocity(
   py: number,
   targetX: number,
   targetY: number,
-  /** Multiplier on PLAYER_SPEED — used by dash to apply a temporary boost.
-   *  Server and client predictor pass the same value (derived from the
-   *  player's `dashUntil` schema field) so prediction stays in sync. */
+  /** Multiplier on PLAYER_SPEED: `playerSpeedMultiplier(input.dash,
+   *  input.fleet)` on both server and client predictor. */
   speedMultiplier: number = 1,
 ): { vx: number; vy: number; speed: number } {
   const dx = targetX - px;
@@ -74,14 +79,13 @@ export function stepPlayer(
   current: PlayerKinematics,
   input: PlayerInput,
   dt: number = TICK_DT,
-  speedMultiplier: number = 1,
 ): PlayerKinematics {
   const desired = playerDesiredVelocity(
     current.x,
     current.y,
     input.targetX,
     input.targetY,
-    speedMultiplier,
+    playerSpeedMultiplier(input.dash, input.fleet),
   );
   if (desired.speed === 0) {
     return { x: current.x, y: current.y, rotation: current.rotation };

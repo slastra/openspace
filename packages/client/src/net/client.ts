@@ -203,10 +203,6 @@ export interface NetClient {
    *  broadcasts an EmoteEvent that all clients render as a toast and
    *  (when the sender is in their AOI) a world-space bubble. */
   emote(kind: EmoteKind): void;
-  /** Begin sustained dash thrust. Speed boost lasts until `dashEnd()`. */
-  dashStart(): void;
-  /** Stop sustained dash thrust. */
-  dashEnd(): void;
   setHandlers(handlers: NetClientHandlers): void;
   leave(): Promise<void>;
 }
@@ -363,12 +359,6 @@ export async function connectToArena(opts: ConnectOptions = {}): Promise<NetClie
     emote(kind) {
       const msg: EmoteMessage = { emote: kind };
       room.send("emote", msg);
-    },
-    dashStart() {
-      room.send("dash-start");
-    },
-    dashEnd() {
-      room.send("dash-end");
     },
     setHandlers(next) {
       handlers = next;

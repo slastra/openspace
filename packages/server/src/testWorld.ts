@@ -35,8 +35,15 @@ export interface TestWorld {
   addPlayer(id: string, x: number, y: number): Player;
   addUnit(ownerId: string, kind: string, x: number, y: number): Unit;
   addStructure(ownerId: string, kind: string, x: number, y: number): Structure;
-  /** Queue an input for `playerId` with the next sequence number. */
-  pushInput(playerId: string, targetX: number, targetY: number): PlayerInput;
+  /** Queue an input for `playerId` with the next sequence number. `fleet`
+   *  defaults to the player's current ownedUnitCount, as an honest client
+   *  with a fresh snapshot would send. */
+  pushInput(
+    playerId: string,
+    targetX: number,
+    targetY: number,
+    opts?: { dash?: boolean; fleet?: number },
+  ): PlayerInput;
   tick(): void;
 }
 
@@ -155,10 +162,16 @@ export async function createTestWorld(): Promise<TestWorld> {
       );
       return s;
     },
-    pushInput(playerId, targetX, targetY) {
+    pushInput(playerId, targetX, targetY, opts) {
       const seq = (seqs.get(playerId) ?? 0) + 1;
       seqs.set(playerId, seq);
-      const input = { seq, targetX, targetY };
+      const input: PlayerInput = {
+        seq,
+        targetX,
+        targetY,
+        dash: opts?.dash ?? false,
+        fleet: opts?.fleet ?? state.players.get(playerId)!.ownedUnitCount,
+      };
       inputQueues.get(playerId)!.push(input);
       return input;
     },

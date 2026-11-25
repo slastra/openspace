@@ -286,18 +286,6 @@ export class ArenaRoom extends Room<{ state: ArenaState }> {
       }
     });
 
-    this.onMessage("dash-start", (client) => {
-      const player = this.state.players.get(client.sessionId);
-      if (!player || player.hp <= 0) return;
-      player.dashing = true;
-    });
-
-    this.onMessage("dash-end", (client) => {
-      const player = this.state.players.get(client.sessionId);
-      if (!player) return;
-      player.dashing = false;
-    });
-
     this.onMessage<DesignateTargetMessage>("designate-target", (client, payload) => {
       if (!payload || typeof payload.targetId !== "string") return;
       const player = this.state.players.get(client.sessionId);
@@ -892,8 +880,11 @@ function isValidInput(p: unknown): p is PlayerInput {
   const o = p as Record<string, unknown>;
   return (
     typeof o.seq === "number" &&
-    typeof o.targetX === "number" &&
-    typeof o.targetY === "number"
+    Number.isFinite(o.targetX) &&
+    Number.isFinite(o.targetY) &&
+    typeof o.dash === "boolean" &&
+    typeof o.fleet === "number" &&
+    o.fleet >= 0
   );
 }
 

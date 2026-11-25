@@ -1,7 +1,18 @@
+/**
+ * One tick of player intent. Everything that sets the ship's speed rides
+ * on the input itself, so the server simulates each input with exactly the
+ * parameters the client predicted it with (see `playerSpeedMultiplier`).
+ */
 export interface PlayerInput {
   seq: number;
   targetX: number;
   targetY: number;
+  /** Dash (Space) held for this tick. */
+  dash: boolean;
+  /** Owned-unit count the client applied fleet drag with. The server
+   *  clamps it to the player's recent counts, so claiming a smaller fleet
+   *  can't buy speed. */
+  fleet: number;
 }
 
 export interface SpawnUnitMessage {

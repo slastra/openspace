@@ -79,15 +79,15 @@ export class LocalPlayer {
   }
 
   /** Predict, write into ship view. Returns inputs to send + current pose.
-   *  `speedMultiplier` is the dash boost (1 normally) — caller derives it
-   *  from `dashUntil` so prediction matches server velocity. */
+   *  Fleet drag uses the synced `ownedUnitCount`; the server simulates each
+   *  input with the count stamped on it, so the snapshot lag doesn't matter. */
   step(
     dt: number,
     target: { x: number; y: number },
-    speedMultiplier: number = 1,
+    dash: boolean,
     serverNow: number = performance.now(),
   ): { inputs: PlayerInput[]; x: number; y: number; rotation: number } {
-    const inputs = this.prediction.step(dt, target, speedMultiplier);
+    const inputs = this.prediction.step(dt, target, dash, this.ownedUnitCount);
     this.prediction.advanceDisplay(dt);
     const pos = this.prediction.position;
     const rotation = this.prediction.rotation;
