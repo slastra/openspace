@@ -45,6 +45,14 @@ const BUILD_INFO_JSON = JSON.stringify(BUILD_INFO);
 // Static client + /build-info. Colyseus 0.18 owns the HTTP server's request
 // handling: its router (matchmaking etc.) answers first and everything else
 // falls through to the `express` hook below, where this is mounted.
+/** Vite's assets/ names carry a content hash, so they never change and can
+ *  be cached forever. Everything else (index.html, favicon) must
+ *  revalidate so a deploy is picked up on the next load. */
+function cacheControlFor(path: string): string {
+  if (path.startsWith("assets/")) return "public, max-age=31536000, immutable";
+  return "no-cache";
+}
+
 async function serveStatic(req: IncomingMessage, res: ServerResponse) {
   if (!req.url || req.method !== "GET") {
     res.writeHead(405).end();
@@ -72,8 +80,14 @@ async function serveStatic(req: IncomingMessage, res: ServerResponse) {
   }
   const direct = await tryServeFile(candidate);
   if (direct) {
-    res.writeHead(200, { "content-type": direct.type, "cache-control": "public, max-age=3600" });
+    res.writeHead(200, { "content-type": direct.type, "cache-control": cacheControlFor(safe) });
     res.end(direct.data);
+    return;
+  }
+  // A missing file (anything with an extension) is a real 404: answering
+  // with index.html would hand HTML to a script tag or an image request.
+  if (extname(safe) !== "") {
+    res.writeHead(404, { "content-type": "text/plain; charset=utf-8" }).end("not found");
     return;
   }
   // SPA fallback to index.html

@@ -38,7 +38,7 @@ import { DebugOverlay } from "./debug/overlay.js";
 import { HealTetherLayer } from "./render/heal-tether.js";
 import { MiningParticleLayer } from "./render/mining-particles.js";
 import { Minimap } from "./render/minimap.js";
-import { hud, type BlockReason, type LeaderboardEntry, type DebugMetrics } from "./hud/hudState.svelte.js";
+import { hud, SCORE_PER_KILL, type BlockReason, type LeaderboardEntry, type DebugMetrics } from "./hud/hudState.svelte.js";
 
 export interface GameDeps {
   renderer: Renderer;
@@ -761,18 +761,27 @@ function pushLeaderboard(net: NetClient) {
     id: e.id,
     name: e.name,
     color: e.color,
-    rank: e.unitCount,
+    fleet: e.unitCount,
+    kills: e.kills,
+    score: e.kills * SCORE_PER_KILL + e.unitCount,
     isLocal: e.id === net.sessionId,
     isDead: e.isDead,
   }));
-  entries.sort((a, b) => b.rank - a.rank || a.name.localeCompare(b.name));
+  entries.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
   // Replacing the array re-renders the list, so only do it on a change.
   const prev = hud.players;
   const same =
     prev.length === entries.length &&
     entries.every((e, i) => {
       const p = prev[i]!;
-      return p.id === e.id && p.rank === e.rank && p.isDead === e.isDead && p.name === e.name && p.color === e.color;
+      return (
+        p.id === e.id &&
+        p.fleet === e.fleet &&
+        p.kills === e.kills &&
+        p.isDead === e.isDead &&
+        p.name === e.name &&
+        p.color === e.color
+      );
     });
   if (!same) hud.players = entries;
 }

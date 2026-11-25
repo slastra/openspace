@@ -129,6 +129,11 @@ export interface SimContext {
    *  the set and teleports + heals each one. Players stay dead until they
    *  appear here, so dying never auto-respawns. */
   pendingRespawnSet: Set<string>;
+  /** Dead players whose death has been processed (kill event, wreckage).
+   *  Cleared on respawn, so each death is handled exactly once. */
+  deathsHandled: Set<string>;
+  /** sessionId → ship kills credited this session (leaderboard score). */
+  killsByPlayer: Map<string, number>;
   /** Per-anchor formation frame and slot assignment (anchor = owner id,
    *  or wreckage id for orphans). Maintained by `planFormations`. */
   formations: Map<string, FormationState>;
@@ -1409,25 +1414,17 @@ function cullAndRespawn(
     const ref = bodyRefs.get(id);
     if (!ref) continue;
 
-    let needsWreckage = player.credits > 0;
-    if (!needsWreckage) {
-      for (const u of state.units.values()) {
-        if (u.ownerId === id && !u.wreckageId) {
-          needsWreckage = true;
-          break;
-        }
-      }
-    }
-    if (needsWreckage) {
-      // Emit kill event for the toast feed before clearing attribution.
-      // needsWreckage is true exactly once per death (the path below
-      // clears credits and orphans owned units), so this fires once per
-      // death without needing a separate "just died this tick" flag.
+    if (!ctx.deathsHandled.has(id)) {
+      ctx.deathsHandled.add(id);
+      // Kill event for the toast feed and the victim's death screen.
       // Empty killerId/Name/Color = environmental death (perimeter wall,
-      // asteroid impact, dash burn) — client renders dimmed without
-      // a killer name.
+      // asteroid impact, dash burn): the client renders it without a
+      // killer name.
       const attackerId = lastAttackerByVictim.get(id) ?? "";
-      const attacker = attackerId ? state.players.get(attackerId) : null;
+      const attacker = attackerId && attackerId !== id ? state.players.get(attackerId) : null;
+      if (attacker) {
+        ctx.killsByPlayer.set(attackerId, (ctx.killsByPlayer.get(attackerId) ?? 0) + 1);
+      }
       ctx.pendingEvents.push({
         event: {
           kind: "kill",
@@ -1439,25 +1436,35 @@ function cullAndRespawn(
           victimColor: player.color,
         },
       });
-      const wid = ctx.allocWreckageId();
-      const w = new Wreckage();
-      w.id = wid;
-      w.x = player.x;
-      w.y = player.y;
-      w.color = player.color;
-      w.ownerName = player.name;
-      w.credits = player.credits;
-      w.halfSize = wreckageHalfSize(player.credits);
-      w.expiresAt = state.serverTime + WRECKAGE_LIFETIME_MS;
-      state.wreckages.set(wid, w);
-      player.credits = 0;
+      lastAttackerByVictim.delete(id);
+
+      let hasFleet = false;
       for (const u of state.units.values()) {
         if (u.ownerId === id && !u.wreckageId) {
-          u.wreckageId = wid;
-          u.targetId = "";
+          hasFleet = true;
+          break;
         }
       }
-      lastAttackerByVictim.delete(id);
+      if (player.credits > 0 || hasFleet) {
+        const wid = ctx.allocWreckageId();
+        const w = new Wreckage();
+        w.id = wid;
+        w.x = player.x;
+        w.y = player.y;
+        w.color = player.color;
+        w.ownerName = player.name;
+        w.credits = player.credits;
+        w.halfSize = wreckageHalfSize(player.credits);
+        w.expiresAt = state.serverTime + WRECKAGE_LIFETIME_MS;
+        state.wreckages.set(wid, w);
+        player.credits = 0;
+        for (const u of state.units.values()) {
+          if (u.ownerId === id && !u.wreckageId) {
+            u.wreckageId = wid;
+            u.targetId = "";
+          }
+        }
+      }
       player.supplyUsed = 0;
       // Every owned unit just flipped to a wreckage orphan above, so the
       // captain's fleet-drag count zeroes — respawn starts at full speed.
@@ -1472,6 +1479,7 @@ function cullAndRespawn(
 
     if (!pendingRespawnSet.has(id)) continue;
     pendingRespawnSet.delete(id);
+    ctx.deathsHandled.delete(id);
 
     // Respawn at owned base if the player still has one — base is the
     // player's literal home. Falls back to world center when the base

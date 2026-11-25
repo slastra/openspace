@@ -220,6 +220,8 @@ export const LeaderboardEntry = schema(
     color: t.string().default("#ffffff"),
     unitCount: t.uint16().default(0),
     deathCount: t.uint32().default(0),
+    /** Enemy ships destroyed this session. */
+    kills: t.uint16().default(0),
     isDead: t.boolean().default(false),
   },
   "LeaderboardEntry",

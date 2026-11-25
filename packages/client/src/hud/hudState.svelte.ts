@@ -7,7 +7,11 @@ export interface LeaderboardEntry {
   id: string;
   name: string;
   color: string;
-  rank: number;
+  /** Live unit count. */
+  fleet: number;
+  kills: number;
+  /** Leaderboard sort key: SCORE_PER_KILL per kill plus one per unit. */
+  score: number;
   isLocal: boolean;
   isDead: boolean;
 }
@@ -187,6 +191,9 @@ export interface DebugMetrics {
   projectiles: number;
   players: number;
 }
+
+/** A ship kill is worth this many units on the leaderboard. */
+export const SCORE_PER_KILL = 10;
 
 /** Why a build card is greyed out. */
 export type BlockReason = "base" | "limit" | "supply" | "credits";

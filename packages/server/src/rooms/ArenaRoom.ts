@@ -122,6 +122,8 @@ export class ArenaRoom extends Room<{ state: ArenaState }> {
     allocProjectileId: () => `r${++this.projectileCounter}`,
     allocWreckageId: () => `w${++this.wreckageCounter}`,
     pendingRespawnSet: new Set(),
+    deathsHandled: new Set(),
+    killsByPlayer: new Map(),
     formations: new Map(),
     lastEntityPos: new Map(),
     inputCursors: new Map(),
@@ -460,6 +462,8 @@ export class ArenaRoom extends Room<{ state: ArenaState }> {
     this.simCtx.lastBaseAlertAt.delete(client.sessionId);
     this.simCtx.lastAttackerByVictim.delete(client.sessionId);
     this.simCtx.pendingRespawnSet.delete(client.sessionId);
+    this.simCtx.deathsHandled.delete(client.sessionId);
+    this.simCtx.killsByPlayer.delete(client.sessionId);
     // Also drop any entries where the leaver was the attacker — stale references.
     for (const [victimId, attackerId] of this.simCtx.lastAttackerByVictim) {
       if (attackerId === client.sessionId) this.simCtx.lastAttackerByVictim.delete(victimId);
@@ -591,6 +595,8 @@ export class ArenaRoom extends Room<{ state: ArenaState }> {
       if (entry.isDead !== isDead) entry.isDead = isDead;
       const count = unitCounts.get(sessionId) ?? 0;
       if (entry.unitCount !== count) entry.unitCount = count;
+      const kills = this.simCtx.killsByPlayer.get(sessionId) ?? 0;
+      if (entry.kills !== kills) entry.kills = kills;
     }
   }
 

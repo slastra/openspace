@@ -46,8 +46,11 @@
           <span class="secs">{wreckSecondsLeft}s</span> to reclaim it.
         </p>
       {:else}
-        <p class="wreck">Respawn at the center of the arena.</p>
+        <p class="wreck">Nothing was left in your wreck.</p>
       {/if}
+      <p class="where">
+        {#if (hud.unitCounts.base ?? 0) > 0}You'll respawn at your base.{:else}You'll respawn at the center of the arena.{/if}
+      </p>
       <button type="button" class="btn btn-primary" onclick={onRespawn}>
         Respawn <span class="keycap">↵</span>
       </button>
@@ -85,11 +88,17 @@
     font-weight: 700;
   }
   .wreck {
-    margin: 16px 0 20px;
+    margin: 16px 0 6px;
     font-family: var(--font-ui);
     font-size: 13px;
     line-height: 1.5;
     color: var(--text);
+  }
+  .where {
+    margin: 0 0 20px;
+    font-family: var(--font-ui);
+    font-size: 12px;
+    color: var(--text-dim);
   }
   .minerals {
     font-family: var(--font-num);

@@ -66,6 +66,8 @@ export async function createTestWorld(): Promise<TestWorld> {
     allocProjectileId: () => `p${++counter}`,
     allocWreckageId: () => `w${++counter}`,
     pendingRespawnSet: new Set(),
+    deathsHandled: new Set(),
+    killsByPlayer: new Map(),
     formations: new Map(),
     lastEntityPos: new Map(),
     inputCursors: new Map(),

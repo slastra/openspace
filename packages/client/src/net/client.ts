@@ -120,6 +120,7 @@ export interface LeaderboardSnapshot {
   color: string;
   unitCount: number;
   deathCount: number;
+  kills: number;
   isDead: boolean;
 }
 
@@ -326,6 +327,7 @@ export async function connectToArena(opts: ConnectOptions = {}): Promise<NetClie
           color: entry.color,
           unitCount: entry.unitCount,
           deathCount: entry.deathCount,
+          kills: entry.kills,
           isDead: entry.isDead,
         });
       }

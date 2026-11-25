@@ -8,7 +8,10 @@
 </script>
 
 <div class="player-list hud-panel">
-  <div class="hud-label heading">Pilots <span class="n">{hud.players.length}</span></div>
+  <div class="hud-label heading">
+    <span>Pilots <span class="n">{hud.players.length}</span></span>
+    <span class="cols"><span title="Ship kills">K</span><span title="Fleet size">Fleet</span></span>
+  </div>
   {#each hud.players as p, i (p.id)}
     <div
       class="row"
@@ -19,7 +22,8 @@
       <span class="pos">{i + 1}</span>
       <span class="swatch" style:background={tint(p.color)}></span>
       <span class="name">{p.name}</span>
-      <span class="rank">{p.rank}</span>
+      <span class="kills">{p.kills}</span>
+      <span class="rank">{p.fleet}</span>
       {#if p.isDead}
         <span class="dead-mark">✕</span>
       {/if}
@@ -47,6 +51,21 @@
     font-family: var(--font-num);
     letter-spacing: 0;
   }
+  .cols {
+    display: flex;
+    gap: 6px;
+  }
+  .cols span:first-child {
+    min-width: 2.4ch;
+    text-align: right;
+  }
+  .kills {
+    min-width: 2.4ch;
+    text-align: right;
+    font-family: var(--font-num);
+    font-size: 11px;
+    color: var(--danger);
+  }
   .row {
     display: flex;
     align-items: center;
@@ -61,6 +80,7 @@
     border-left-color: currentColor;
   }
   .row.dead .name,
+  .row.dead .kills,
   .row.dead .rank,
   .row.dead .swatch {
     opacity: 0.4;
@@ -95,7 +115,7 @@
     font-size: 12px;
     font-weight: 700;
     color: var(--text-strong);
-    min-width: 2ch;
+    min-width: 4.2ch;
     text-align: right;
   }
   .dead-mark {

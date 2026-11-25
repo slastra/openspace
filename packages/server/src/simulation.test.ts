@@ -335,4 +335,23 @@ describe("bookkeeping", () => {
     expect(mine.length).toBe(10);
     expect(new Set(mine.map((u) => u.slotIndex)).size).toBe(10);
   });
+
+  it("reports every death once, even with nothing to drop, and credits the killer", async () => {
+    const w = await createTestWorld();
+    const victim = w.addPlayer("a", 3000, 3000);
+    w.addPlayer("b", 5000, 5000);
+    victim.credits = 0;
+    w.tick();
+    w.ctx.lastAttackerByVictim.set("a", "b");
+    victim.hp = 0;
+    w.tick();
+    const kills = () => w.ctx.pendingEvents.filter((e) => e.event.kind === "kill");
+    expect(kills()).toHaveLength(1);
+    expect(kills()[0]!.event).toMatchObject({ kind: "kill", victimId: "a", killerId: "b" });
+    expect(w.state.wreckages.size).toBe(0);
+    expect(w.ctx.killsByPlayer.get("b")).toBe(1);
+    w.tick(); // still dead: no second event
+    expect(kills()).toHaveLength(0);
+    expect(w.ctx.killsByPlayer.get("b")).toBe(1);
+  });
 });
