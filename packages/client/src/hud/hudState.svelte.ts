@@ -48,6 +48,8 @@ class HudState {
   status = $state("");
   /** Transient-mode hint (e.g. "RECYCLE — click an owned structure"). */
   modeHint = $state("");
+  /** Sound muted (mirrors sfx.muted; toggled with M or the HUD button). */
+  muted = $state(false);
   /** First-session onboarding step text; empty once the pilot has a fleet. */
   hint = $state("");
 

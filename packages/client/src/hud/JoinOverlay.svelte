@@ -30,6 +30,7 @@
     ["Right-drag", "Emote wheel"],
     ["X", "Recycle structure"],
     ["Esc", "Cancel placement"],
+    ["M", "Mute sound"],
     ["F1", "Debug overlay"],
   ];
   const SPAWN_KEYS: ReadonlyArray<readonly [string, string]> = [

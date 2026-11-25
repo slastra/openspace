@@ -34,6 +34,8 @@ import { createTargetCrosshair, type TargetCrosshair } from "./effects/target-cr
 import { parseHexColor } from "./render/colors.js";
 import { pollBuildInfo } from "./net/build-info-poll.js";
 import { isTouch } from "./hud/device.js";
+import { sfx } from "./audio.js";
+import { createHitSpark } from "./effects/hit-spark.js";
 import { BUILD_INFO } from "@openspace/shared";
 import { DebugOverlay } from "./debug/overlay.js";
 import { HealTetherLayer } from "./render/heal-tether.js";
@@ -94,6 +96,16 @@ export function startGame({ renderer, input, net }: GameDeps) {
   // Effects layer lives in world space (above the entities) so explosions
   // and spawn pulses pan with the camera.
   const effects = new EffectManager(renderer.world);
+  // Impact sparks + tick sound for anything taking damage, capped per
+  // frame so a 200-drone brawl stays readable (and cheap).
+  const MAX_SPARKS_PER_FRAME = 10;
+  let sparksThisFrame = 0;
+  const hitFeedback = (x: number, y: number, color: string) => {
+    if (sparksThisFrame >= MAX_SPARKS_PER_FRAME) return;
+    sparksThisFrame++;
+    effects.add(createHitSpark(x, y, color));
+    sfx.play("hit", { x, y, volume: 0.5 });
+  };
   // Heal tethers sit between effects and entities — visible above ships so
   // you can clearly see who's being patched up, but under burst FX.
   const healTethers = new HealTetherLayer(renderer.world);
@@ -206,6 +218,9 @@ export function startGame({ renderer, input, net }: GameDeps) {
     recycling = false;
   };
   input.onKeyTap("Escape", cancelModes);
+  input.onKeyTap("KeyM", () => {
+    hud.muted = sfx.toggleMute();
+  });
   input.onRightClick(cancelModes);
   // Right-button DOWN also opens the radial emote menu at the click
   // point. Cancel + menu-open are non-conflicting: tap with no drag
@@ -271,6 +286,7 @@ export function startGame({ renderer, input, net }: GameDeps) {
       if (placeBlock(placing, snapX, snapY, local, remotes, structures, net.sessionId)) {
         // Stay in placement mode so the reason under the ghost is readable.
         placementGhost.reject();
+        sfx.play("deny");
         return;
       }
       net.buildStructure(placing, world.x, world.y);
@@ -306,12 +322,17 @@ export function startGame({ renderer, input, net }: GameDeps) {
       const justRespawned = snap.deathCount > local.deathCount;
       if (snap.hp < local.hp && local.maxHp > 0 && !justRespawned) {
         // Red edge flash scaled by how big the hit was.
-        renderer.vignette.hit(0.3 + ((local.hp - snap.hp) / local.maxHp) * 2);
+        const frac = (local.hp - snap.hp) / local.maxHp;
+        renderer.vignette.hit(0.3 + frac * 2);
+        renderer.camera.shake(3 + frac * 40);
+        sfx.play("hurt", { volume: 0.6 + frac * 3 });
       }
       if (justDied) {
         effects.add(
           createDeathBurst(local.prediction.position.x, local.prediction.position.y, local.color),
         );
+        sfx.play("bigExplode");
+        renderer.camera.shake(14);
         local.ship.container.visible = false;
         // The kill event follows this patch and fills in killedBy.
         hud.killedBy = null;
@@ -321,6 +342,7 @@ export function startGame({ renderer, input, net }: GameDeps) {
       if (justRespawned) {
         effects.add(createRespawnPulse(snap.x, snap.y, snap.color));
         local.ship.container.visible = true;
+        sfx.play("respawn");
       }
       local.applyServerUpdate(snap);
       syncFocusCrosshair(snap.focusTargetId, snap.color);
@@ -335,8 +357,10 @@ export function startGame({ renderer, input, net }: GameDeps) {
       if (!r) return;
       const justDied = r.hp > 0 && snap.hp <= 0;
       const justRespawned = snap.deathCount > r.deathCount;
+      if (snap.hp < r.hp && !justDied) hitFeedback(r.renderedX, r.renderedY, r.color);
       if (justDied) {
         effects.add(createDeathBurst(r.renderedX, r.renderedY, r.color));
+        sfx.play("bigExplode", { x: r.renderedX, y: r.renderedY });
         r.ship.container.visible = false;
       }
       if (justRespawned) {
@@ -357,6 +381,7 @@ export function startGame({ renderer, input, net }: GameDeps) {
       updateOffset(snap.serverTime);
       units.set(snap.id, new Unit(snap, renderer));
       if (snap.ownerId === net.sessionId) {
+        sfx.play("spawn", { x: snap.x, y: snap.y, volume: 0.7 });
         localUnitCounts[snap.kind] = (localUnitCounts[snap.kind] ?? 0) + 1;
         localUnitTotal++;
       }
@@ -400,8 +425,10 @@ export function startGame({ renderer, input, net }: GameDeps) {
               intensity,
             ),
           );
+          sfx.play("laser", { x: u.view.container.x, y: u.view.container.y });
         }
       }
+      if (snap.hp < u.hp) hitFeedback(u.view.container.x, u.view.container.y, u.color);
       u.applyServerUpdate(snap);
       u.lastFireCount = snap.fireCount;
     },
@@ -412,6 +439,7 @@ export function startGame({ renderer, input, net }: GameDeps) {
       // see exactly how much area each death threatens.
       const radius = UNIT_KIND_META[u.kind]?.explodeRadius ?? 0;
       effects.add(createExplosion(u.view.container.x, u.view.container.y, radius, u.color));
+      sfx.play("explode", { x: u.view.container.x, y: u.view.container.y, volume: radius > 0 ? 1 : 0.5 });
       if (u.ownerId === net.sessionId) {
         const next = (localUnitCounts[u.kind] ?? 0) - 1;
         if (next > 0) localUnitCounts[u.kind] = next;
@@ -441,6 +469,7 @@ export function startGame({ renderer, input, net }: GameDeps) {
     onProjectileAdd(snap) {
       updateOffset(snap.serverTime);
       projectiles.set(snap.id, new Projectile(snap, renderer));
+      sfx.play("gun", { x: snap.x, y: snap.y });
     },
     onProjectileUpdate(snap) {
       updateOffset(snap.serverTime);
@@ -455,12 +484,14 @@ export function startGame({ renderer, input, net }: GameDeps) {
       const serverNow = serverOffset !== null ? performance.now() - serverOffset : performance.now();
       const pos = p.positionAt(serverNow);
       effects.add(createBulletPop(pos.x, pos.y, "#ffd166"));
+      sfx.play("hit", { x: pos.x, y: pos.y, volume: 0.6 });
       p.destroy(renderer);
       projectiles.delete(id);
     },
     onStructureAdd(snap) {
       structures.set(snap.id, new Structure(snap, renderer));
       if (snap.ownerId === net.sessionId) {
+        sfx.play("build", { x: snap.x, y: snap.y });
         localStructureCounts[snap.kind] = (localStructureCounts[snap.kind] ?? 0) + 1;
       }
     },
@@ -497,8 +528,10 @@ export function startGame({ renderer, input, net }: GameDeps) {
               intensity,
             ),
           );
+          sfx.play("laser", { x: s.view.container.x, y: s.view.container.y, volume: 1.3 });
         }
       }
+      if (snap.hp < s.hp) hitFeedback(s.view.container.x, s.view.container.y, s.color);
       s.applyServerUpdate(snap);
       s.lastFireCount = snap.fireCount;
     },
@@ -507,6 +540,7 @@ export function startGame({ renderer, input, net }: GameDeps) {
       if (!s) return;
       // Bigger pop than a unit — structures take a beating to fall.
       effects.add(createExplosion(s.view.container.x, s.view.container.y, 50, s.color));
+      sfx.play("explode", { x: s.view.container.x, y: s.view.container.y, volume: 1.5 });
       if (s.ownerId === net.sessionId) {
         const next = (localStructureCounts[s.kind] ?? 0) - 1;
         if (next > 0) localStructureCounts[s.kind] = next;
@@ -593,10 +627,15 @@ export function startGame({ renderer, input, net }: GameDeps) {
             if (r) return { x: r.renderedX, y: r.renderedY };
             return null;
           };
-          if (anchor()) effects.add(createEmoteBubble(glyph, anchor));
+          const at = anchor();
+          if (at) {
+            effects.add(createEmoteBubble(glyph, anchor));
+            sfx.play("emote", at);
+          }
         }
       } else if (event.kind === "base-attack") {
         hud.pushFeedEntry({ kind: "base-attack" });
+        sfx.play("alarm");
       }
     },
   });
@@ -608,6 +647,7 @@ export function startGame({ renderer, input, net }: GameDeps) {
   renderer.app.ticker.add(() => {
     const now = performance.now();
     const dt = Math.min(0.1, (now - lastFrame) / 1000);
+    sparksThisFrame = 0;
     lastFrame = now;
     const serverNow = serverOffset !== null ? now - serverOffset : now;
 
@@ -645,6 +685,7 @@ export function startGame({ renderer, input, net }: GameDeps) {
       }
     }
     renderer.camera.apply();
+    sfx.setListener(renderer.camera.x, renderer.camera.y, renderer.app.screen.width);
 
     renderer.vignette.tick(dt);
     interpDelay.advance(dt);
@@ -695,6 +736,7 @@ export function startGame({ renderer, input, net }: GameDeps) {
     }
 
     if (local && local.credits !== lastCredits) {
+      if (lastCredits >= 0 && local.credits > lastCredits) sfx.play("mineral");
       hud.setMinerals(local.credits);
       lastCredits = local.credits;
     }

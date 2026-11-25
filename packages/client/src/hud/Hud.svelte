@@ -10,6 +10,7 @@
   import RadialEmoteMenu from "./RadialEmoteMenu.svelte";
   import ReconnectOverlay from "./ReconnectOverlay.svelte";
   import OnboardingHint from "./OnboardingHint.svelte";
+  import SoundToggle from "./SoundToggle.svelte";
 
   let { onRespawn, onEmote, onPress, onRelease }: {
     onRespawn: () => void;
@@ -22,6 +23,7 @@
 
 <PlayerList />
 <StatsPanel />
+<SoundToggle />
 <BuildHud {onPress} {onRelease} />
 <Status />
 <OnboardingHint />
