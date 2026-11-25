@@ -55,7 +55,12 @@ import {
   stepWorld,
 } from "./physics.js";
 import { KindBehavior, Velocity, lookupKind } from "./behaviors.js";
-import { FormationState, holdFormation, planFormations } from "./formation.js";
+import {
+  FormationState,
+  holdFormation,
+  planFormations,
+  detourVelocity,
+} from "./formation.js";
 import {
   TickGrids,
   gridNearestEnemy,
@@ -390,9 +395,16 @@ function runUnitAI(state: ArenaState, bodyRefs: Map<string, BodyRef>, ctx: SimCo
       const slot = formation.get(unitId);
       // While dashing, cap the catch-up below the kind's formation speed so
       // units that fell out of formation rejoin without overshooting.
-      desired = slot
-        ? holdFormation(unit, slot, dashing ? meta.attackSpeed : meta.formationSpeed)
-        : { vx: 0, vy: 0 };
+      if (slot) {
+        const cap = dashing ? meta.attackSpeed : meta.formationSpeed;
+        // Rounding an obstacle goes slower, so the unit can follow the
+        // rim's curve instead of skidding into it.
+        desired =
+          detourVelocity(unit, slot, meta.contactRadius, ctx.grids, cap * DETOUR_SPEED_FACTOR) ??
+          holdFormation(unit, slot, cap);
+      } else {
+        desired = { vx: 0, vy: 0 };
+      }
     }
     // Acceleration cap: clamp the per-tick velocity *change* so sharp AI
     // intent flips (formation→chase, target switch, asteroid death) don't
@@ -404,6 +416,9 @@ function runUnitAI(state: ArenaState, bodyRefs: Map<string, BodyRef>, ctx: SimCo
     setBodyVelocity(ref.body, limited.vx, limited.vy);
   }
 }
+
+/** Correction-speed factor while a formation unit detours around an obstacle. */
+const DETOUR_SPEED_FACTOR = 0.5;
 
 /**
  * The unit's target this tick. Re-acquisition is staggered to ~10Hz

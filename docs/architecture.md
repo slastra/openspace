@@ -94,6 +94,11 @@ owner's ship, or the wreckage they orbit once orphaned.
   velocity plus spin) and adds a proportional correction toward it,
   capped at the kind's `formationSpeed`. It is first order, so units ease
   onto their slot without overshoot and sit still on it.
+- **Obstacles**: when the straight path to a slot crosses an asteroid or
+  an enemy structure (or the slot sits inside one), `detourVelocity` takes
+  over: it circles the obstacle's inflated rim toward the slot's side at
+  half speed, holding the rim radius, so a formation sweeping over rocks
+  flows around them and a slot buried in a rock parks its unit on the rim.
 - **Behaviors only describe combat.** `KindBehavior.engage` returns a
   velocity while the unit is engaging, or `null` to hold formation.
   Orphans, over-supply sleepers, and the whole fleet of a dashing owner

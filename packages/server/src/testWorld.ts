@@ -5,6 +5,7 @@
  */
 import {
   ArenaState,
+  Asteroid,
   PLAYER_CONTACT_RADIUS,
   PLAYER_MAX_HP,
   Player,
@@ -17,6 +18,7 @@ import {
 } from "@openspace/shared";
 import {
   PhysicsWorld,
+  addAsteroidBody,
   addCombatantBody,
   addStructureBody,
   createPhysicsWorld,
@@ -35,6 +37,7 @@ export interface TestWorld {
   addPlayer(id: string, x: number, y: number): Player;
   addUnit(ownerId: string, kind: string, x: number, y: number): Unit;
   addStructure(ownerId: string, kind: string, x: number, y: number): Structure;
+  addAsteroid(x: number, y: number, radius: number, hp?: number): Asteroid;
   /** Queue an input for `playerId` with the next sequence number. `fleet`
    *  defaults to the player's current ownedUnitCount, as an honest client
    *  with a fresh snapshot would send. */
@@ -161,6 +164,18 @@ export async function createTestWorld(): Promise<TestWorld> {
         }),
       );
       return s;
+    },
+    addAsteroid(x, y, radius, hp = 10_000) {
+      const a = new Asteroid();
+      a.id = `a${++counter}`;
+      a.x = x;
+      a.y = y;
+      a.radius = radius;
+      a.hp = hp;
+      a.maxHp = hp;
+      state.asteroids.set(a.id, a);
+      bodyRefs.set(a.id, addAsteroidBody(phys, { entityId: a.id, x, y, radius }));
+      return a;
     },
     pushInput(playerId, targetX, targetY, opts) {
       const seq = (seqs.get(playerId) ?? 0) + 1;

@@ -2,6 +2,7 @@ import {
   ArenaState,
   Asteroid,
   Combatant,
+  Structure,
   WORLD_WIDTH,
   isNeutral,
   teamOf,
@@ -79,6 +80,8 @@ export interface TickGrids {
   units: SpatialGrid<Unit>;
   /** Live asteroids. Used for miner targeting + ship mining reach. */
   asteroids: SpatialGrid<Asteroid>;
+  /** Live structures. Used for formation obstacle avoidance. */
+  structures: SpatialGrid<Structure>;
 }
 
 export function createTickGrids(): TickGrids {
@@ -86,6 +89,7 @@ export function createTickGrids(): TickGrids {
     combatants: new SpatialGrid<Combatant>(),
     units: new SpatialGrid<Unit>(),
     asteroids: new SpatialGrid<Asteroid>(),
+    structures: new SpatialGrid<Structure>(),
   };
 }
 
@@ -93,6 +97,7 @@ export function rebuildTickGrids(grids: TickGrids, state: ArenaState) {
   grids.combatants.clear();
   grids.units.clear();
   grids.asteroids.clear();
+  grids.structures.clear();
   for (const p of state.players.values()) {
     if (p.hp > 0) grids.combatants.insert(p);
   }
@@ -103,7 +108,9 @@ export function rebuildTickGrids(grids: TickGrids, state: ArenaState) {
     grids.units.insert(u);
   }
   for (const s of state.structures.values()) {
-    if (s.hp > 0) grids.combatants.insert(s);
+    if (s.hp <= 0) continue;
+    grids.combatants.insert(s);
+    grids.structures.insert(s);
   }
   for (const a of state.asteroids.values()) {
     if (a.hp > 0) grids.asteroids.insert(a);

@@ -251,6 +251,26 @@ describe("formation", () => {
     expect(moved).toBeLessThanOrEqual(4);
   });
 
+  it("flows around asteroids instead of grinding through them", async () => {
+    for (const rocks of [[{ x: 3200, y: 3372, r: 252 }], [{ x: 2900, y: 2780, r: 50 }, { x: 3400, y: 3240, r: 32 }]]) {
+      const w = await createTestWorld();
+      const ship = w.addPlayer("a", 2000, 3000);
+      // Lasers never engage rocks, and nothing here heals them.
+      for (let i = 0; i < 150; i++) w.addUnit("a", "laser", 2000, 3000);
+      for (const k of rocks) w.addAsteroid(k.x, k.y, k.r);
+      for (let i = 0; i < 90; i++) w.tick();
+      const hp = () => [...w.state.units.values()].reduce((sum, u) => sum + u.hp, 0);
+      const before = hp();
+      for (let i = 0; i < 300; i++) {
+        w.pushInput("a", ship.x + 1000, 3000);
+        w.tick();
+      }
+      expect(w.state.units.size).toBe(150);
+      // Was 800-1000 HP lost (and 21 dead lasers on the giant).
+      expect(hp()).toBe(before);
+    }
+  });
+
   it("orphans regroup around their wreckage", async () => {
     const w = await createTestWorld();
     const owner = w.addPlayer("a", 3000, 3000);

@@ -1,13 +1,17 @@
 import {
+  ASTEROID_TIERS,
   ArenaState,
+  STRUCTURE_KIND_META,
   UNIT_KIND_META,
   WORLD_HEIGHT,
   WORLD_WIDTH,
   clamp,
   formationRadius,
   formationSlotOffset,
+  shortestAngleDelta,
 } from "@openspace/shared";
 import type { Unit } from "@openspace/shared";
+import type { TickGrids } from "./spatial.js";
 
 /**
  * Formations: every group of units sharing an anchor (an owner's ship, or
@@ -223,4 +227,94 @@ export function holdFormation(
     cy *= maxCorrection / mag;
   }
   return { vx: target.vx + cx, vy: target.vy + cy };
+}
+
+/** Gap kept between a detouring unit and an obstacle's surface. */
+const OBSTACLE_CLEARANCE = 8;
+
+/** Collision radius of a structure: its ball radius, or the corner
+ *  distance of a cuboid wall. */
+function structureObstacleRadius(kind: string): number {
+  const meta = STRUCTURE_KIND_META[kind];
+  if (!meta) return 0;
+  return meta.colliderShape === "cuboid" ? meta.halfExtent * Math.SQRT2 : meta.halfExtent;
+}
+
+/** Largest obstacle radius, so one grid query finds every candidate. */
+const MAX_OBSTACLE_RADIUS = Math.max(
+  ...ASTEROID_TIERS.map((t) => t.radius),
+  ...Object.keys(STRUCTURE_KIND_META).map(structureObstacleRadius),
+);
+
+/**
+ * Detour for a formation unit whose way to its slot is blocked by a solid
+ * obstacle (an asteroid or an enemy structure; its own structures let it
+ * through). Returns null when the path is clear, so the caller uses
+ * `holdFormation`.
+ *
+ * Blocked means the straight path to the slot crosses the obstacle's
+ * inflated circle, or the slot itself lies inside it. The detour is a
+ * velocity in the obstacle's polar frame: a tangential part that circles
+ * toward the slot's side and slows as it reaches the slot's angle, and a
+ * radial part that holds the unit on the inflated rim. A slot buried in a
+ * rock therefore parks its unit on the rim nearest it, and a formation
+ * sweeping over a rock flows around it. Pushing the slot target out of the
+ * rock doesn't work: that target flips from the near rim to the far one as
+ * the formation passes, and units drive straight through. Chasing a
+ * waypoint on the rim doesn't either: the pursuit spirals inward.
+ */
+export function detourVelocity(
+  unit: Unit,
+  target: FormationTarget,
+  unitRadius: number,
+  grids: TickGrids,
+  maxSpeed: number,
+): { vx: number; vy: number } | null {
+  const sx = unit.x;
+  const sy = unit.y;
+  const dx = target.x - sx;
+  const dy = target.y - sy;
+  const len2 = dx * dx + dy * dy;
+  const pad = unitRadius + OBSTACLE_CLEARANCE;
+
+  // The blocking obstacle closest to the unit along its path.
+  let block: { cx: number; cy: number; r: number; t: number } | null = null;
+  const consider = (cx: number, cy: number, radius: number) => {
+    const r = radius + pad;
+    const t = len2 > 1e-9 ? clamp(((cx - sx) * dx + (cy - sy) * dy) / len2, 0, 1) : 0;
+    const px = sx + dx * t - cx;
+    const py = sy + dy * t - cy;
+    if (px * px + py * py >= r * r) return;
+    if (!block || t < block.t) block = { cx, cy, r, t };
+  };
+  const midX = sx + dx / 2;
+  const midY = sy + dy / 2;
+  const reach = Math.sqrt(len2) / 2 + MAX_OBSTACLE_RADIUS + pad;
+  grids.asteroids.forEachInRadius(midX, midY, reach, (a) => {
+    if (a.hp > 0) consider(a.x, a.y, a.radius);
+  });
+  grids.structures.forEachInRadius(midX, midY, reach, (s) => {
+    if (s.hp > 0 && s.ownerId !== unit.ownerId) consider(s.x, s.y, structureObstacleRadius(s.kind));
+  });
+  if (!block) return null;
+
+  const { cx, cy, r } = block;
+  const ru = Math.hypot(sx - cx, sy - cy);
+  // Outward normal at the unit, and the tangent turning toward the slot.
+  const nx = ru > 1e-6 ? (sx - cx) / ru : 1;
+  const ny = ru > 1e-6 ? (sy - cy) / ru : 0;
+  const delta = shortestAngleDelta(
+    Math.atan2(ny, nx),
+    Math.atan2(target.y - cy, target.x - cx),
+  );
+  const turn = delta >= 0 ? 1 : -1;
+  const tx = -ny * turn;
+  const ty = nx * turn;
+
+  // Around the rim, easing in over the remaining arc; plus the slot's own
+  // motion along the tangent (its radial part would push into the rock).
+  const along = Math.min(maxSpeed, FORMATION_GAIN * Math.abs(delta) * r) + target.vx * tx + target.vy * ty;
+  // Back onto the rim from either side.
+  const out = clamp(FORMATION_GAIN * (r - ru), -maxSpeed, maxSpeed);
+  return { vx: tx * along + nx * out, vy: ty * along + ny * out };
 }
