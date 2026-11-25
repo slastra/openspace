@@ -637,7 +637,9 @@ export class ArenaRoom extends Room<{ state: ArenaState }> {
       // was visible last tick stays visible until it crosses the outer
       // band. We query at outer radius and re-check below.
       grids.combatants.forEachInRadius(player.x, player.y, radius + AOI_HYSTERESIS_U, (c) => {
-        if (next.has(c.id)) return;
+        // Entities killed after the grid rebuild are already culled from
+        // state; don't add them to a view.
+        if (c.hp <= 0 || next.has(c.id)) return;
         const dx = c.x - player.x;
         const dy = c.y - player.y;
         const d2 = dx * dx + dy * dy;

@@ -26,7 +26,6 @@ import {
   DASH_SPEED_MULTIPLIER,
   STRUCTURE_KIND_META,
   Combatant,
-  allCombatants,
   applyDamage,
   clamp,
   contactRadiusOf,
@@ -189,12 +188,16 @@ export function simulateTick(
   resolveCollisions(state, phys, bodyRefs, ctx);
   readBackPlayers(state, bodyRefs, ctx);
   readBackUnits(state, bodyRefs, ctx);
+  // Re-index at the post-step positions so every pass below (abilities,
+  // auras, projectiles, explosions, and the room's AOI views) queries
+  // where things are now, not where they were before the physics step.
+  rebuildTickGrids(ctx.grids, state);
   mineAsteroids(state, ctx.creditAccrual);
   runUnitAbilities(state, ctx);
   runStructureAbilities(state, ctx);
   runRepairs(state);
   runMedbays(state, ctx);
-  runShieldAuras(state);
+  runShieldAuras(state, ctx);
   stepProjectiles(state, ctx);
   burnFleetWhileDashing(state);
   runExplosions(state, ctx);
@@ -1099,16 +1102,16 @@ function runExplosions(state: ArenaState, ctx: SimContext) {
       if (radius <= 0 || dmg <= 0) continue;
       const radSq = radius * radius;
       const team = teamOf(unit);
-      for (const c of allCombatants(state)) {
-        if (c.id === unit.id) continue;
-        if (c.hp <= 0) continue;
-        if (teamOf(c) === team) continue;
-        if (isNeutral(c)) continue;
+      ctx.grids.combatants.forEachInRadius(unit.x, unit.y, radius, (c) => {
+        if (c.id === unit.id) return;
+        if (c.hp <= 0) return;
+        if (teamOf(c) === team) return;
+        if (isNeutral(c)) return;
         const dx = c.x - unit.x;
         const dy = c.y - unit.y;
-        if (dx * dx + dy * dy > radSq) continue;
+        if (dx * dx + dy * dy > radSq) return;
         damage(c, dmg, unit.ownerId, ctx, state.serverTime);
-      }
+      });
       progressed = true;
     }
   }
@@ -1120,6 +1123,15 @@ function runExplosions(state: ArenaState, ctx: SimContext) {
  * Damage attribution flows through `lastAttackerByVictim` so a projectile
  * kill awards bounty to the firing unit's owner.
  */
+/** Largest contact radius of any combatant, so a projectile's grid query
+ *  (centered on the projectile) reaches every body it could overlap. */
+const MAX_CONTACT_RADIUS = Math.max(
+  PLAYER_CONTACT_RADIUS,
+  ...Object.values(UNIT_KIND_META).map((m) => m.contactRadius),
+  ...Object.values(STRUCTURE_KIND_META).map((m) => m.halfExtent),
+);
+const PROJECTILE_HIT_QUERY_RADIUS = MAX_CONTACT_RADIUS + PROJECTILE_RADIUS;
+
 function stepProjectiles(state: ArenaState, ctx: SimContext) {
   if (state.projectiles.size === 0) return;
   const now = state.serverTime;
@@ -1138,20 +1150,22 @@ function stepProjectiles(state: ArenaState, ctx: SimContext) {
       removed.push(id);
       continue;
     }
-    let hit = false;
-    for (const c of allCombatants(state)) {
-      if (c.hp <= 0) continue;
-      if (teamOf(c) === p.team) continue;
-      if (isNeutral(c)) continue;
+    let victim = null as Combatant | null;
+    ctx.grids.combatants.forEachInRadius(p.x, p.y, PROJECTILE_HIT_QUERY_RADIUS, (c) => {
+      if (victim) return;
+      if (c.hp <= 0) return;
+      if (teamOf(c) === p.team) return;
+      if (isNeutral(c)) return;
       const r = contactRadiusOf(c) + PROJECTILE_RADIUS;
       const dx = c.x - p.x;
       const dy = c.y - p.y;
-      if (dx * dx + dy * dy > r * r) continue;
-      damage(c, p.damage, p.ownerId, ctx, state.serverTime);
-      hit = true;
-      break;
+      if (dx * dx + dy * dy > r * r) return;
+      victim = c;
+    });
+    if (victim) {
+      damage(victim, p.damage, p.ownerId, ctx, state.serverTime);
+      removed.push(id);
     }
-    if (hit) removed.push(id);
   }
   for (const id of removed) state.projectiles.delete(id);
 }
@@ -1165,7 +1179,7 @@ function stepProjectiles(state: ArenaState, ctx: SimContext) {
  * stops when they're out of range. Multiple shielders raise the cap to the
  * highest grant present (not additive) but stack their regen rates.
  */
-function runShieldAuras(state: ArenaState) {
+function runShieldAuras(state: ArenaState, ctx: SimContext) {
   for (const shielder of state.units.values()) {
     if (shielder.hp <= 0) continue;
     if (shielder.wreckageId || shielder.deactivated) continue; // orphans + sleeping don't project
@@ -1176,17 +1190,17 @@ function runShieldAuras(state: ArenaState) {
     if (range <= 0 || grant <= 0 || regen <= 0) continue;
     const radSq = range * range;
     const team = teamOf(shielder);
-    for (const c of allCombatants(state)) {
-      if (c.hp <= 0) continue;
-      if (teamOf(c) !== team) continue;
+    ctx.grids.combatants.forEachInRadius(shielder.x, shielder.y, range, (c) => {
+      if (c.hp <= 0) return;
+      if (teamOf(c) !== team) return;
       const dx = c.x - shielder.x;
       const dy = c.y - shielder.y;
-      if (dx * dx + dy * dy > radSq) continue;
+      if (dx * dx + dy * dy > radSq) return;
       if (c.maxShield < grant) c.maxShield = grant;
       if (c.shield < c.maxShield) {
         c.shield = Math.min(c.maxShield, c.shield + regen * TICK_DT);
       }
-    }
+    });
   }
 }
 
