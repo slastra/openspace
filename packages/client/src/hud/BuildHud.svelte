@@ -24,58 +24,75 @@
   ];
 </script>
 
-<div class="build-hud">
-  <div class="row">
-    <span class="row-label">Build</span>
-    {#each STRUCTURE_CARDS as c (c.kind)}
-      <BuildCard
-        kind={c.kind}
-        label={c.label}
-        hotkey={c.hotkey}
-        cost={STRUCTURE_KIND_META[c.kind]?.cost ?? 0}
-      />
-    {/each}
+<div class="build-hud hud-panel">
+  <div class="group">
+    <span class="hud-label group-label build">Build</span>
+    <div class="cards">
+      {#each STRUCTURE_CARDS as c (c.kind)}
+        <BuildCard
+          kind={c.kind}
+          label={c.label}
+          hotkey={c.hotkey}
+          cost={STRUCTURE_KIND_META[c.kind]?.cost ?? 0}
+        />
+      {/each}
+    </div>
   </div>
-  <div class="row">
-    <span class="row-label">Units</span>
-    {#each UNIT_CARDS as c (c.kind)}
-      <BuildCard
-        kind={c.kind}
-        label={c.label}
-        hotkey={c.hotkey}
-        cost={UNIT_KIND_META[c.kind]?.cost ?? 0}
-      />
-    {/each}
+  <div class="divider"></div>
+  <div class="group">
+    <span class="hud-label group-label units">Units</span>
+    <div class="cards">
+      {#each UNIT_CARDS as c (c.kind)}
+        <BuildCard
+          kind={c.kind}
+          label={c.label}
+          hotkey={c.hotkey}
+          cost={UNIT_KIND_META[c.kind]?.cost ?? 0}
+        />
+      {/each}
+    </div>
   </div>
 </div>
 
 <style>
   .build-hud {
+    /* Card size scales down on short or narrow windows so the bar never
+     * crowds the ship's formation or the minimap. */
+    --card-w: clamp(56px, 4.6vw, 68px);
+    --card-h: clamp(66px, 8.4vh, 76px);
     position: absolute;
-    left: 18px;
+    left: 50%;
     bottom: 14px;
+    transform: translateX(-50%);
     display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 8px;
-    background: rgba(10, 14, 26, 0.65);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
+    align-items: stretch;
+    gap: 10px;
+    padding: 6px 10px 8px;
     pointer-events: none;
     user-select: none;
   }
-  .row {
+  .group {
     display: flex;
-    gap: 6px;
-    align-items: stretch;
+    flex-direction: column;
+    gap: 5px;
   }
-  .row-label {
-    align-self: center;
-    width: 64px;
-    font-size: 10px;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: #64748b;
-    padding-left: 4px;
+  .group-label {
+    font-size: 9px;
+    padding-left: 2px;
+  }
+  .group-label.build {
+    color: var(--build);
+  }
+  .group-label.units {
+    color: var(--accent);
+  }
+  .cards {
+    display: flex;
+    gap: 4px;
+  }
+  .divider {
+    width: 1px;
+    margin: 18px 0 4px;
+    background: linear-gradient(180deg, transparent, rgba(148, 163, 184, 0.3), transparent);
   }
 </style>

@@ -7,7 +7,7 @@
 
 {#if hud.debug}
   {@const d = hud.debug}
-  <div class="debug">
+  <div class="debug hud-panel">
     <div class="title">F1 Debug</div>
 
     <div class="section">
@@ -46,10 +46,7 @@
     transform: translateX(-50%);
     margin-top: 36px;
     padding: 8px 12px;
-    background: rgba(10, 14, 26, 0.78);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 6px;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-family: var(--font-num);
     font-size: 11px;
     color: #cbd5e1;
     pointer-events: none;
@@ -57,7 +54,9 @@
     min-width: 260px;
   }
   .title {
-    color: #94a3b8;
+    font-family: var(--font-ui);
+    font-weight: 700;
+    color: var(--text-dim);
     font-size: 10px;
     letter-spacing: 0.2em;
     text-transform: uppercase;

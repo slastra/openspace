@@ -94,43 +94,60 @@
     z-index: 6;
   }
   .toast {
-    padding: 4px 12px;
-    background: rgba(10, 14, 26, 0.78);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 4px;
-    font-size: 12px;
-    letter-spacing: 0.06em;
-    color: #cbd5e1;
+    padding: 5px 14px;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    box-shadow: var(--panel-shadow);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    letter-spacing: 0.03em;
+    color: var(--text);
     transition: opacity 120ms ease;
     white-space: nowrap;
+    animation: toast-in 180ms ease-out;
+  }
+  @keyframes toast-in {
+    from {
+      transform: translateY(-6px);
+    }
   }
   .toast.involves-local {
-    border-color: rgba(255, 255, 255, 0.4);
-    background: rgba(20, 28, 50, 0.85);
+    border-color: rgba(74, 222, 128, 0.45);
+    box-shadow:
+      var(--panel-shadow),
+      0 0 12px rgba(74, 222, 128, 0.15);
   }
   .toast.base-attack {
-    background: rgba(50, 10, 14, 0.92);
-    border-color: rgba(248, 113, 113, 0.7);
-    padding: 6px 16px;
-    font-size: 13px;
-    letter-spacing: 0.12em;
+    background: linear-gradient(180deg, rgba(80, 16, 22, 0.95), rgba(45, 8, 12, 0.95));
+    border-color: rgba(248, 113, 113, 0.75);
+    padding: 7px 18px;
+    animation:
+      toast-in 180ms ease-out,
+      alarm 900ms ease-in-out infinite;
+  }
+  @keyframes alarm {
+    50% {
+      box-shadow: 0 0 22px rgba(248, 113, 113, 0.55);
+    }
   }
   .name {
-    font-weight: 600;
+    font-weight: 700;
   }
   .sep {
-    margin: 0 6px;
-    color: #94a3b8;
+    margin: 0 7px;
+    color: var(--text-dim);
   }
   .sep.dim {
-    color: #64748b;
+    color: var(--text-faint);
   }
   .emote {
     margin-left: 8px;
-    font-size: 14px;
+    font-size: 15px;
   }
   .alert {
-    color: #fda4af;
+    color: #fecaca;
     font-weight: 700;
+    letter-spacing: 0.16em;
   }
 </style>

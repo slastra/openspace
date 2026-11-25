@@ -49,16 +49,16 @@
 </script>
 
 {#if hud.connectionState === "reconnecting"}
-  <div class="overlay">
-    <div class="panel reconnect">
+  <div class="scrim">
+    <div class="modal panel reconnect">
       <div class="spinner"></div>
       <div class="title">Reconnecting</div>
       <div class="subtitle">The server may be updating.</div>
     </div>
   </div>
 {:else if hud.connectionState === "update-available" && hud.serverBuildInfo}
-  <div class="overlay">
-    <div class="panel update">
+  <div class="scrim">
+    <div class="modal panel update">
       <div class="kicker">openspace updated</div>
       <div class="title">A new build is ready</div>
       {#if newNotes.length > 0}
@@ -70,10 +70,10 @@
         </ul>
       {/if}
       <div class="actions">
-        <button type="button" class="ghost" onclick={stay} disabled={!countdownActive}>
+        <button type="button" class="btn btn-ghost" onclick={stay} disabled={!countdownActive}>
           {#if countdownActive}Stay{:else}Staying…{/if}
         </button>
-        <button type="button" class="primary" onclick={refresh}>
+        <button type="button" class="btn btn-primary" onclick={refresh}>
           {#if countdownActive}
             Refresh now ({countdown}s)
           {:else}
@@ -86,30 +86,15 @@
 {/if}
 
 <style>
-  .overlay {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(10, 14, 26, 0.78);
-    backdrop-filter: blur(2px);
+  .scrim {
     z-index: 12;
   }
   .panel {
     padding: 28px 36px;
-    background:
-      radial-gradient(120% 80% at 50% 0%, rgba(74, 222, 128, 0.06), transparent 60%),
-      rgba(20, 27, 45, 0.96);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    border-radius: 12px;
-    box-shadow:
-      0 24px 72px rgba(0, 0, 0, 0.55),
-      0 0 0 1px rgba(74, 222, 128, 0.08);
-    color: #cbd5e1;
     text-align: center;
     min-width: 320px;
-    max-width: 520px;
+    max-width: min(520px, calc(100vw - 32px));
+    box-sizing: border-box;
   }
   .reconnect {
     min-width: 280px;
@@ -119,7 +104,7 @@
     height: 28px;
     margin: 0 auto 14px;
     border: 2px solid rgba(255, 255, 255, 0.12);
-    border-top-color: #4ade80;
+    border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin 0.9s linear infinite;
   }
@@ -129,40 +114,42 @@
     }
   }
   .title {
+    font-family: var(--font-ui);
     font-size: 16px;
     letter-spacing: 0.2em;
     text-transform: uppercase;
     font-weight: 700;
-    color: #f1f5f9;
+    color: var(--text-strong);
   }
   .subtitle {
     margin-top: 8px;
-    font-size: 12px;
-    color: #94a3b8;
-    letter-spacing: 0.04em;
+    font-family: var(--font-ui);
+    font-size: 13px;
+    color: var(--text-dim);
   }
   .update {
     text-align: left;
   }
   .update .title {
-    text-align: left;
     font-size: 18px;
     margin-bottom: 4px;
   }
   .kicker {
+    font-family: var(--font-ui);
     font-size: 10px;
     letter-spacing: 0.28em;
     text-transform: uppercase;
-    color: #4ade80;
+    color: var(--accent);
     font-weight: 700;
     margin-bottom: 6px;
   }
   .notes-label {
     margin-top: 18px;
+    font-family: var(--font-ui);
     font-size: 10px;
     letter-spacing: 0.24em;
     text-transform: uppercase;
-    color: #94a3b8;
+    color: var(--text-dim);
     font-weight: 700;
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     padding-bottom: 6px;
@@ -171,9 +158,10 @@
     list-style: none;
     padding: 10px 0 0;
     margin: 0;
-    font-size: 12px;
+    font-family: var(--font-ui);
+    font-size: 13px;
     line-height: 1.55;
-    color: #cbd5e1;
+    color: var(--text);
   }
   .notes li {
     display: flex;
@@ -183,10 +171,9 @@
   }
   .note-sha {
     flex: 0 0 auto;
-    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-family: var(--font-num);
     font-size: 10px;
-    color: #64748b;
-    letter-spacing: 0.04em;
+    color: var(--text-faint);
   }
   .actions {
     display: flex;
@@ -196,38 +183,8 @@
     padding-top: 18px;
     border-top: 1px solid rgba(255, 255, 255, 0.06);
   }
-  button {
-    display: inline-block;
-    padding: 9px 18px;
-    border: none;
-    border-radius: 4px;
-    font: inherit;
-    font-weight: 700;
+  .btn {
     font-size: 12px;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    cursor: pointer;
-    transition:
-      background 120ms ease,
-      opacity 120ms ease;
-  }
-  .primary {
-    background: #4ade80;
-    color: #0a0e1a;
-  }
-  .primary:hover {
-    background: #6ee7a0;
-  }
-  .ghost {
-    background: rgba(255, 255, 255, 0.08);
-    color: #cbd5e1;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-  }
-  .ghost:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.14);
-  }
-  .ghost:disabled {
-    opacity: 0.5;
-    cursor: default;
+    padding: 9px 18px;
   }
 </style>

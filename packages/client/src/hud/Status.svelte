@@ -15,18 +15,22 @@
     top: 14px;
     left: 50%;
     transform: translateX(-50%);
-    padding: 6px 14px;
-    background: rgba(10, 14, 26, 0.7);
-    border-radius: 4px;
+    padding: 6px 16px;
+    background: var(--panel-bg);
+    border-radius: 6px;
+    box-shadow: var(--panel-shadow);
+    font-family: var(--font-ui);
+    font-weight: 700;
     font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
     pointer-events: none;
     user-select: none;
     z-index: 5;
-    letter-spacing: 0.08em;
   }
   .status {
-    border: 1px solid rgba(248, 113, 113, 0.45);
-    color: #f87171;
+    border: 1px solid rgba(248, 113, 113, 0.5);
+    color: var(--danger);
   }
   .mode {
     border: 1px solid rgba(250, 204, 21, 0.55);

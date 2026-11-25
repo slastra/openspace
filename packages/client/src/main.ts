@@ -1,4 +1,7 @@
 import { mount, unmount } from "svelte";
+import type { Ticker } from "pixi.js";
+import { WORLD_HEIGHT, WORLD_WIDTH } from "@openspace/shared";
+import "./hud/theme.css";
 import { createRenderer } from "./render/renderer.js";
 import { buildGrid, buildSpawnBubble, buildStarfield } from "./render/background.js";
 import { generateBuildIcons } from "./render/build-icons.js";
@@ -31,11 +34,19 @@ async function main() {
 
   const input = createInput(renderer.app);
 
+  // Behind the join screen, drift the camera slowly around the arena so
+  // the starfield and grid read as a live backdrop.
+  const drift = (t: Ticker) => {
+    const s = t.lastTime / 1000;
+    renderer.camera.setTarget(
+      WORLD_WIDTH / 2 + Math.cos(s * 0.05) * 900,
+      WORLD_HEIGHT / 2 + Math.sin(s * 0.05) * 600,
+    );
+    renderer.camera.apply();
+  };
+  renderer.app.ticker.add(drift);
   const name = await promptForName(joinRoot);
-  // Reveal the game canvas only after the player has committed a name —
-  // the join overlay is now down, so the world (asteroids, spawn bubble,
-  // grid) is theirs to look at.
-  host.style.visibility = "visible";
+  renderer.app.ticker.remove(drift);
 
   const net = await connectToArena({ name }).catch((err) => {
     hud.status = `failed to join: ${(err as Error).message}`;

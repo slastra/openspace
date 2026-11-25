@@ -38,7 +38,7 @@ import { DebugOverlay } from "./debug/overlay.js";
 import { HealTetherLayer } from "./render/heal-tether.js";
 import { MiningParticleLayer } from "./render/mining-particles.js";
 import { Minimap } from "./render/minimap.js";
-import { hud, LeaderboardEntry, DebugMetrics } from "./hud/hudState.svelte.js";
+import { hud, type BlockReason, type LeaderboardEntry, type DebugMetrics } from "./hud/hudState.svelte.js";
 
 export interface GameDeps {
   renderer: Renderer;
@@ -327,6 +327,10 @@ export function startGame({ renderer, input, net }: GameDeps) {
           createDeathBurst(local.prediction.position.x, local.prediction.position.y, local.color),
         );
         local.ship.container.visible = false;
+        // The kill event follows this patch and fills in killedBy.
+        hud.killedBy = null;
+        hud.wreckCredits = local.credits;
+        hud.diedAt = performance.now();
       }
       if (justRespawned) {
         effects.add(createRespawnPulse(snap.x, snap.y, snap.color));
@@ -579,6 +583,9 @@ export function startGame({ renderer, input, net }: GameDeps) {
             event.killerId === net.sessionId ||
             event.victimId === net.sessionId,
         });
+        if (event.victimId === net.sessionId && event.killerName) {
+          hud.killedBy = { name: event.killerName, color: event.killerColor };
+        }
       } else if (event.kind === "emote") {
         hud.pushFeedEntry({
           kind: "emote",
@@ -723,7 +730,11 @@ export function startGame({ renderer, input, net }: GameDeps) {
       // for one frame after the mode flips off.
       for (const s of structures.values()) s.view.container.alpha = 1;
     }
-    hud.modeHint = recycling ? "RECYCLE — click a structure to reclaim" : "";
+    hud.modeHint = recycling
+      ? "Recycle · click a structure to reclaim · Esc to cancel"
+      : placing
+        ? `Place ${placing} · click to build · Esc to cancel`
+        : "";
 
     pushHudUpdates(localUnitCounts, localStructureCounts, localUnitTotal, local, placing);
     pushLeaderboard(net);
@@ -764,7 +775,22 @@ function pushLeaderboard(net: NetClient) {
     isDead: e.isDead,
   }));
   entries.sort((a, b) => b.rank - a.rank || a.name.localeCompare(b.name));
-  hud.players = entries;
+  // Replacing the array re-renders the list, so only do it on a change.
+  const prev = hud.players;
+  const same =
+    prev.length === entries.length &&
+    entries.every((e, i) => {
+      const p = prev[i]!;
+      return p.id === e.id && p.rank === e.rank && p.isDead === e.isDead && p.name === e.name && p.color === e.color;
+    });
+  if (!same) hud.players = entries;
+}
+
+function sameRecord<T>(a: Record<string, T>, b: Record<string, T>): boolean {
+  const ak = Object.keys(a);
+  if (ak.length !== Object.keys(b).length) return false;
+  for (const k of ak) if (a[k] !== b[k]) return false;
+  return true;
 }
 
 /**
@@ -789,29 +815,31 @@ function pushHudUpdates(
   // regardless of credits/supply. Mirrors the server gate so the HUD
   // greys out unit cards that would be rejected on submit.
   const hasBase = (structureCounts.base ?? 0) > 0;
-  const affordable: Record<string, boolean> = {};
+  const blocked: Record<string, BlockReason> = {};
   for (const [kind, meta] of Object.entries(UNIT_KIND_META)) {
-    affordable[kind] =
-      hasBase &&
-      credits >= meta.cost &&
-      supplyUsed + meta.supplyCost <= supplyCap;
+    if (!hasBase) blocked[kind] = "base";
+    else if (supplyUsed + meta.supplyCost > supplyCap) blocked[kind] = "supply";
+    else if (credits < meta.cost) blocked[kind] = "credits";
   }
   for (const [kind, meta] of Object.entries(STRUCTURE_KIND_META)) {
     // Per-kind cap (e.g. base capped at 1) — a structure at its limit
     // greys out even if the player has the credits.
-    const atLimit =
-      meta.maxPerPlayer !== undefined &&
-      (structureCounts[kind] ?? 0) >= meta.maxPerPlayer;
-    affordable[kind] = !atLimit && credits >= meta.cost;
+    if (meta.maxPerPlayer !== undefined && (structureCounts[kind] ?? 0) >= meta.maxPerPlayer) {
+      blocked[kind] = "limit";
+    } else if (credits < meta.cost) {
+      blocked[kind] = "credits";
+    }
   }
 
-  hud.unitCounts = ownedByKind;
-  hud.affordable = affordable;
+  if (!sameRecord(hud.unitCounts, ownedByKind)) hud.unitCounts = ownedByKind;
+  if (!sameRecord(hud.blocked, blocked)) hud.blocked = blocked;
   hud.placing = placing;
-  hud.rank = totalUnits;
+  hud.fleetSize = totalUnits;
   if (local) {
     hud.hp = local.hp;
     hud.maxHp = local.maxHp;
+    hud.shield = local.shield;
+    hud.maxShield = local.maxShield;
     hud.supplyUsed = local.supplyUsed;
     hud.supplyCap = local.supplyCap;
   }

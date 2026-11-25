@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@colyseus/sdk": "^0.18.10",
+    "@fontsource/chakra-petch": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
     "@openspace/shared": "workspace:*",
     "pixi.js": "^8.23.0",
     "svelte": "^5.59.1"

@@ -25,8 +25,8 @@
   // controls a new player needs before their first match.
   const MOVE_KEYS: ReadonlyArray<readonly [string, string]> = [
     ["Mouse", "Steer"],
-    ["Click", "Designate target"],
-    ["Space (hold)", "Recall + dash"],
+    ["Click", "Focus a target"],
+    ["Hold Space", "Recall + dash"],
     ["Right-drag", "Emote wheel"],
     ["X", "Recycle structure"],
     ["Esc", "Cancel placement"],
@@ -49,129 +49,138 @@
   ];
 </script>
 
-<div class="overlay">
-  <form class="panel" onsubmit={submit}>
-    <div class="title">Pilot Name</div>
-    <input
-      type="text"
-      maxlength="16"
-      autocomplete="off"
-      autocapitalize="off"
-      spellcheck="false"
-      placeholder="Enter your name"
-      bind:value={name}
-      bind:this={inputEl}
-    />
-    <button type="submit">Join</button>
+<div class="scrim join">
+  <form class="modal panel" onsubmit={submit}>
+    <div class="brand">
+      <h1 class="wordmark">open<span>space</span></h1>
+      <p class="tagline">Build a base. Grow a swarm. Take the arena.</p>
+    </div>
+
+    <label class="hud-label field-label" for="pilot-name">Pilot name</label>
+    <div class="join-row">
+      <input
+        id="pilot-name"
+        type="text"
+        maxlength="16"
+        autocomplete="off"
+        autocapitalize="off"
+        spellcheck="false"
+        placeholder="Pilot"
+        bind:value={name}
+        bind:this={inputEl}
+      />
+      <button type="submit" class="btn btn-primary">Launch <span class="keycap">↵</span></button>
+    </div>
 
     <div class="controls">
       <div class="col col-pilot">
-        <div class="heading">Pilot</div>
+        <div class="hud-label heading">Pilot</div>
         {#each MOVE_KEYS as [k, label] (k)}
           <div class="row">
-            <span class="key" class:wide={k.length > 1}>{k}</span>
+            <span class="keycap" class:wide={k.length > 1}>{k}</span>
             <span class="label">{label}</span>
           </div>
         {/each}
       </div>
       <div class="col col-build">
-        <div class="heading">Build</div>
+        <div class="hud-label heading">Build</div>
         {#each BUILD_KEYS as [k, label] (k)}
           <div class="row">
-            <span class="key">{k}</span>
+            <span class="keycap">{k}</span>
             <span class="label">{label}</span>
           </div>
         {/each}
       </div>
       <div class="col col-spawn">
-        <div class="heading">Spawn</div>
+        <div class="hud-label heading">Spawn</div>
         {#each SPAWN_KEYS as [k, label] (k)}
           <div class="row">
-            <span class="key">{k}</span>
+            <span class="keycap">{k}</span>
             <span class="label">{label}</span>
           </div>
         {/each}
       </div>
     </div>
+    <p class="hint">Place a base first, then hold a spawn key to grow your swarm.</p>
   </form>
 </div>
 
 <style>
-  .overlay {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(10, 14, 26, 0.55);
-    z-index: 10;
+  .join {
+    background: radial-gradient(ellipse at center, rgba(10, 14, 26, 0.15) 0%, rgba(10, 14, 26, 0.7) 100%);
   }
   .panel {
-    padding: 28px 36px 24px;
-    background:
-      radial-gradient(120% 80% at 50% 0%, rgba(74, 222, 128, 0.06), transparent 60%),
-      rgba(20, 27, 45, 0.96);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    border-radius: 12px;
-    text-align: center;
-    min-width: 580px;
-    box-shadow:
-      0 24px 72px rgba(0, 0, 0, 0.55),
-      0 0 0 1px rgba(74, 222, 128, 0.08);
+    padding: 30px 36px 22px;
+    width: min(620px, calc(100vw - 32px));
+    box-sizing: border-box;
   }
-  .title {
-    font-size: 14px;
+  .brand {
+    text-align: center;
+    margin-bottom: 26px;
+  }
+  .wordmark {
+    margin: 0;
+    font-family: var(--font-ui);
+    font-weight: 700;
+    font-size: 44px;
+    line-height: 1;
     letter-spacing: 0.22em;
     text-transform: uppercase;
-    color: #cbd5e1;
-    margin-bottom: 14px;
+    color: var(--text-strong);
+    /* Letter-spacing pads the right edge; pull it back so the word centers. */
+    margin-right: -0.22em;
+    text-shadow: 0 0 24px rgba(148, 163, 184, 0.25);
+  }
+  .wordmark span {
+    color: var(--accent);
+    text-shadow: 0 0 22px rgba(74, 222, 128, 0.55);
+  }
+  .tagline {
+    margin: 10px 0 0;
+    font-family: var(--font-ui);
+    font-size: 14px;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+  }
+  .field-label {
+    display: block;
+    margin-bottom: 6px;
+  }
+  .join-row {
+    display: flex;
+    gap: 10px;
   }
   input {
-    display: block;
-    width: 100%;
-    box-sizing: border-box;
-    padding: 8px 10px;
-    margin-bottom: 12px;
-    background: rgba(10, 14, 26, 0.75);
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    border-radius: 4px;
-    color: #ffffff;
-    font: inherit;
-    font-size: 14px;
+    flex: 1;
+    min-width: 0;
+    padding: 10px 12px;
+    background: var(--inset-bg);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 6px;
+    color: var(--text-strong);
+    font-family: var(--font-ui);
+    font-weight: 500;
+    font-size: 16px;
+    letter-spacing: 0.04em;
+    transition:
+      border-color 120ms ease,
+      box-shadow 120ms ease;
+  }
+  input::placeholder {
+    color: var(--text-faint);
   }
   input:focus {
     outline: none;
-    border-color: #4ade80;
-  }
-  button {
-    display: inline-block;
-    padding: 10px 24px;
-    background: #4ade80;
-    border: none;
-    border-radius: 4px;
-    color: #0a0e1a;
-    font: inherit;
-    font-weight: 700;
-    font-size: 13px;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    cursor: pointer;
-    transition: background 120ms ease;
-  }
-  button:hover {
-    background: #6ee7a0;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.15);
   }
   .controls {
     display: grid;
-    grid-template-columns: 1.25fr 1fr 1fr;
+    grid-template-columns: 1.3fr 1fr 1fr;
     gap: 22px;
-    /* Bleed the top border to the panel edges by negating the panel's
-     *  horizontal padding (28 36 24). The grid content itself stays
-     *  inset via the re-added padding so columns line up with the form
-     *  fields above. */
-    margin: 24px -36px 0;
+    margin: 26px -36px 0;
     padding: 20px 36px 0;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
     text-align: left;
   }
   .col {
@@ -180,79 +189,57 @@
     gap: 7px;
   }
   .heading {
-    font-size: 10px;
-    letter-spacing: 0.24em;
-    text-transform: uppercase;
-    font-weight: 700;
-    color: #94a3b8;
     padding-bottom: 6px;
     margin-bottom: 2px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   }
   .col-pilot .heading {
-    color: #cbd5e1;
-    border-bottom-color: rgba(203, 213, 225, 0.18);
+    color: var(--text);
   }
   .col-build .heading {
-    color: #fb923c;
+    color: var(--build);
     border-bottom-color: rgba(251, 146, 60, 0.28);
   }
   .col-spawn .heading {
-    color: #4ade80;
+    color: var(--accent);
     border-bottom-color: rgba(74, 222, 128, 0.28);
   }
   .row {
     display: flex;
     align-items: center;
     gap: 10px;
-    font-size: 11px;
-    line-height: 1;
   }
-  .key {
-    flex: 0 0 auto;
+  .keycap {
     min-width: 22px;
     height: 22px;
-    padding: 0 7px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(180deg, #2a3553 0%, #1a2238 100%);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-bottom-color: rgba(0, 0, 0, 0.45);
-    border-radius: 4px;
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.14),
-      0 1px 0 rgba(0, 0, 0, 0.5),
-      0 2px 4px rgba(0, 0, 0, 0.35);
-    color: #f1f5f9;
-    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    font-weight: 700;
-    font-size: 10px;
-    letter-spacing: 0.04em;
-    text-align: center;
-    white-space: nowrap;
   }
-  .key.wide {
-    min-width: 64px;
+  .keycap.wide {
+    min-width: 72px;
   }
-  .col-build .key {
-    border-color: rgba(251, 146, 60, 0.35);
-    border-bottom-color: rgba(0, 0, 0, 0.5);
-    box-shadow:
-      inset 0 1px 0 rgba(251, 146, 60, 0.18),
-      0 1px 0 rgba(0, 0, 0, 0.5),
-      0 2px 4px rgba(0, 0, 0, 0.35);
+  .col-build .keycap {
+    border-color: rgba(251, 146, 60, 0.4);
   }
-  .col-spawn .key {
-    border-color: rgba(74, 222, 128, 0.35);
-    border-bottom-color: rgba(0, 0, 0, 0.5);
-    box-shadow:
-      inset 0 1px 0 rgba(74, 222, 128, 0.18),
-      0 1px 0 rgba(0, 0, 0, 0.5),
-      0 2px 4px rgba(0, 0, 0, 0.35);
+  .col-spawn .keycap {
+    border-color: rgba(74, 222, 128, 0.4);
   }
   .label {
-    color: #cbd5e1;
-    letter-spacing: 0.02em;
+    font-family: var(--font-ui);
+    font-size: 13px;
+    color: var(--text);
+  }
+  .hint {
+    margin: 18px 0 0;
+    text-align: center;
+    font-family: var(--font-ui);
+    font-size: 12px;
+    color: var(--text-faint);
+  }
+  @media (max-width: 640px) {
+    .controls {
+      grid-template-columns: 1fr 1fr;
+    }
+    .col-pilot {
+      grid-column: 1 / -1;
+    }
   }
 </style>

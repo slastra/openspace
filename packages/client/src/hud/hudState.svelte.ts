@@ -22,13 +22,23 @@ export interface LeaderboardEntry {
  * at startup and accessed directly.
  */
 class HudState {
-  rank = $state(0);
+  /** Live owned-unit count for the local player. */
+  fleetSize = $state(0);
   minerals = $state(0);
   hp = $state(0);
   maxHp = $state(0);
+  shield = $state(0);
+  maxShield = $state(0);
   supplyUsed = $state(0);
   supplyCap = $state(0);
   isDead = $state(false);
+  /** Who killed the local ship most recently (empty for environmental
+   *  deaths). Set from the kill event, read by the death overlay. */
+  killedBy = $state<{ name: string; color: string } | null>(null);
+  /** Credits the local ship carried when it died, i.e. what its wreck holds. */
+  wreckCredits = $state(0);
+  /** performance.now() at the moment of death, for the wreck countdown. */
+  diedAt = $state(0);
 
   /** Disconnect / error notice text. Empty by default. */
   status = $state("");
@@ -41,8 +51,9 @@ class HudState {
   /** Per-kind owned counts. Indexed by kind name (rammer/miner/...). */
   unitCounts = $state<Record<string, number>>({});
 
-  /** Per-kind affordability — true when player has enough credits + supply. */
-  affordable = $state<Record<string, boolean>>({});
+  /** Per-kind reason the build card is disabled, or absent when it can
+   *  be built/spawned right now. */
+  blocked = $state<Record<string, BlockReason>>({});
 
   /** Active build mode: structure kind being placed, or null. */
   placing = $state<StructureKindName | null>(null);
@@ -176,5 +187,8 @@ export interface DebugMetrics {
   projectiles: number;
   players: number;
 }
+
+/** Why a build card is greyed out. */
+export type BlockReason = "base" | "limit" | "supply" | "credits";
 
 export const hud = new HudState();

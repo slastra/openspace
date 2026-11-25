@@ -7,15 +7,16 @@
   }
 </script>
 
-<div class="player-list">
-  <div class="heading">Players</div>
-  {#each hud.players as p (p.id)}
+<div class="player-list hud-panel">
+  <div class="hud-label heading">Pilots <span class="n">{hud.players.length}</span></div>
+  {#each hud.players as p, i (p.id)}
     <div
       class="row"
       class:self={p.isLocal}
       class:dead={p.isDead}
       style:color={tint(p.color)}
     >
+      <span class="pos">{i + 1}</span>
       <span class="swatch" style:background={tint(p.color)}></span>
       <span class="name">{p.name}</span>
       <span class="rank">{p.rank}</span>
@@ -31,63 +32,74 @@
     position: absolute;
     top: 14px;
     left: 18px;
-    padding: 8px 10px;
-    background: rgba(10, 14, 26, 0.6);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 6px;
+    padding: 10px 10px 8px;
     pointer-events: none;
     user-select: none;
-    min-width: 200px;
+    width: 210px;
+    box-sizing: border-box;
   }
   .heading {
-    font-size: 10px;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: #64748b;
-    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    padding: 0 4px 6px;
+  }
+  .n {
+    font-family: var(--font-num);
+    letter-spacing: 0;
   }
   .row {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 3px 4px;
-    border-radius: 3px;
+    gap: 7px;
+    height: 22px;
+    padding: 0 6px 0 4px;
+    border-radius: 4px;
+    border-left: 2px solid transparent;
   }
   .row.self {
     background: rgba(255, 255, 255, 0.06);
-    border-left: 2px solid currentColor;
-    padding-left: 2px;
+    border-left-color: currentColor;
   }
   .row.dead .name,
   .row.dead .rank,
   .row.dead .swatch {
     opacity: 0.4;
   }
+  .pos {
+    width: 1.6ch;
+    font-family: var(--font-num);
+    font-size: 10px;
+    color: var(--text-faint);
+    text-align: right;
+  }
   .swatch {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
     border-radius: 2px;
+    transform: rotate(45deg);
     flex-shrink: 0;
+    box-shadow: 0 0 6px currentColor;
   }
   .name {
     flex: 1;
-    font-size: 12px;
-    color: #e2e8f0;
+    font-family: var(--font-ui);
+    font-weight: 500;
+    font-size: 13px;
+    color: var(--text-strong);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
   .rank {
+    font-family: var(--font-num);
     font-size: 12px;
-    font-variant-numeric: tabular-nums;
     font-weight: 700;
-    color: #ffffff;
+    color: var(--text-strong);
     min-width: 2ch;
     text-align: right;
   }
   .dead-mark {
     font-size: 10px;
-    color: #f87171;
-    margin-left: 4px;
+    color: var(--danger);
   }
 </style>
