@@ -39,13 +39,16 @@
     margin-top: 36px;
   }
   @media (max-width: 719px) {
+    /* Left column under the player list, clear of the minimap. */
     .banner {
       top: calc(var(--gutter-top) + 126px);
+      left: var(--gutter-x);
+      transform: none;
       width: max-content;
       max-width: calc(100vw - 2 * var(--gutter-x) - 120px);
       box-sizing: border-box;
       white-space: normal;
-      text-align: center;
+      text-align: left;
       font-size: 11px;
     }
   }
