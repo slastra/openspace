@@ -37,9 +37,9 @@ after 30s).
 
 ## Known landmines
 
-- **Schema decorator emit**: TS class-field initializers shadow
-  `defineTypes` getters. Use constructor-init pattern with
-  `useDefineForClassFields: false`.
+- **Schema definitions**: synced types are `schema({...})` values with
+  a same-named `SchemaType` alias (`shared/src/schema.ts`), every field
+  with an explicit `.default()`. Server-only fields use `.noSync()`.
 - **DPR drift**: camera math uses `app.canvas.getBoundingClientRect()`,
   not `renderer.width / resolution` (Firefox disagrees).
 - **Server time is the simulation clock**: `state.serverTime` advances by
