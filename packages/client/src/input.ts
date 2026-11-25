@@ -17,6 +17,10 @@ export interface InputState {
   /** True while `key` (KeyboardEvent.code) is currently held. Used by the
    *  per-frame loop for repeat-on-hold behaviors (e.g. unit spawn). */
   isKeyDown(key: string): boolean;
+  /** Press / release a key from on-screen UI (build cards, touch buttons).
+   *  Runs exactly the keyboard path, so holds and taps behave the same. */
+  press(key: string): void;
+  release(key: string): void;
   /**
    * Subscribe to a primary-button click on the canvas. Handler receives the
    * cursor position in CSS pixels relative to the canvas. Returns an
@@ -62,18 +66,27 @@ export function createInput(app: Application): InputState {
   const onEnter = () => {
     state.active = true;
   };
-  const onKeyDown = (ev: KeyboardEvent) => {
-    if (ev.repeat) return;
-    downKeys.add(ev.code);
-    const subs = tapHandlers.get(ev.code);
+  const pressKey = (code: string) => {
+    if (downKeys.has(code)) return;
+    downKeys.add(code);
+    const subs = tapHandlers.get(code);
     if (!subs) return;
     for (const fn of subs) fn();
   };
-  const onKeyUp = (ev: KeyboardEvent) => {
-    downKeys.delete(ev.code);
-    const subs = upHandlers.get(ev.code);
+  const releaseKey = (code: string) => {
+    if (!downKeys.delete(code)) return;
+    const subs = upHandlers.get(code);
     if (!subs) return;
     for (const fn of subs) fn();
+  };
+  const isTyping = (ev: KeyboardEvent) =>
+    ev.target instanceof HTMLInputElement || ev.target instanceof HTMLTextAreaElement;
+  const onKeyDown = (ev: KeyboardEvent) => {
+    if (ev.repeat || isTyping(ev)) return;
+    pressKey(ev.code);
+  };
+  const onKeyUp = (ev: KeyboardEvent) => {
+    releaseKey(ev.code);
   };
 
   const onClick = (ev: PointerEvent) => {
@@ -147,6 +160,8 @@ export function createInput(app: Application): InputState {
     isKeyDown(key) {
       return downKeys.has(key);
     },
+    press: pressKey,
+    release: releaseKey,
   };
   return state;
 }

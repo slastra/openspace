@@ -48,6 +48,8 @@ class HudState {
   status = $state("");
   /** Transient-mode hint (e.g. "RECYCLE — click an owned structure"). */
   modeHint = $state("");
+  /** First-session onboarding step text; empty once the pilot has a fleet. */
+  hint = $state("");
 
   /** Sorted leaderboard rows, replaced wholesale each frame. */
   players = $state<LeaderboardEntry[]>([]);

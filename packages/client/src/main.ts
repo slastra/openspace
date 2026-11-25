@@ -58,6 +58,8 @@ async function main() {
     props: {
       onRespawn: () => net.respawn(),
       onEmote: (kind) => net.emote(kind),
+      onPress: (code) => input.press(code),
+      onRelease: (code) => input.release(code),
     },
   });
 

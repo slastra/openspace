@@ -1,12 +1,41 @@
 <script lang="ts">
   import { hud, type BlockReason } from "./hudState.svelte.js";
+  import { kindInfo } from "./kindInfo.js";
 
   let {
     kind,
     label,
     hotkey,
     cost,
-  }: { kind: string; label: string; hotkey: string; cost: number } = $props();
+    onPress,
+    onRelease,
+  }: {
+    kind: string;
+    label: string;
+    hotkey: string;
+    cost: number;
+    onPress: (code: string) => void;
+    onRelease: (code: string) => void;
+  } = $props();
+
+  const code = $derived(`Key${hotkey}`);
+  const info = $derived(kindInfo(kind));
+  let held = false;
+
+  // A press runs the same path as the hotkey: tap a structure card to
+  // toggle placement, hold a unit card to keep spawning.
+  function down(ev: PointerEvent) {
+    if (ev.button !== 0) return;
+    ev.preventDefault();
+    (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
+    held = true;
+    onPress(code);
+  }
+  function up() {
+    if (!held) return;
+    held = false;
+    onRelease(code);
+  }
 
   let iconHost: HTMLDivElement;
   let installed = false;
@@ -34,7 +63,18 @@
   let placing = $derived(hud.placing === kind);
 </script>
 
-<div class="card" class:blocked={reason !== undefined} class:placing>
+<div
+  class="card"
+  class:blocked={reason !== undefined}
+  class:placing
+  role="button"
+  tabindex="-1"
+  aria-label="{label} ({hotkey})"
+  onpointerdown={down}
+  onpointerup={up}
+  onpointercancel={up}
+  onlostpointercapture={up}
+>
   <span class="keycap">{hotkey}</span>
   <span class="cost" class:short={reason === "credits"}>{cost}</span>
   <div class="icon" bind:this={iconHost}></div>
@@ -44,6 +84,18 @@
   {:else}
     <div class="footer name">{label}</div>
   {/if}
+  <div class="tip" role="tooltip">
+    <div class="tip-head">
+      <span class="tip-name">{label}</span>
+      <span class="keycap">{hotkey}</span>
+    </div>
+    <p class="tip-blurb">{info.blurb}</p>
+    <div class="tip-stats">
+      {#each info.stats as [k, v] (k)}
+        <span class="stat"><span class="k">{k}</span>{v}</span>
+      {/each}
+    </div>
+  </div>
 </div>
 
 <style>
@@ -60,6 +112,77 @@
       border-color 120ms ease,
       box-shadow 120ms ease,
       transform 120ms ease;
+  }
+  .card {
+    cursor: pointer;
+  }
+  @media (hover: hover) {
+    .card:hover {
+      border-color: rgba(148, 163, 184, 0.45);
+    }
+    .card:hover .tip {
+      opacity: 1;
+      transform: translate(-50%, 0);
+      transition-delay: 250ms;
+    }
+  }
+  .tip {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 12px);
+    width: 230px;
+    padding: 10px 12px;
+    background: var(--panel-solid);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 8px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    transform: translate(-50%, 4px);
+    transition:
+      opacity 120ms ease,
+      transform 120ms ease;
+    pointer-events: none;
+    z-index: 20;
+    text-align: left;
+  }
+  .tip-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .tip-name {
+    font-family: var(--font-ui);
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-strong);
+  }
+  .tip-blurb {
+    margin: 6px 0 8px;
+    font-family: var(--font-ui);
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--text);
+  }
+  .tip-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .stat {
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--inset-bg);
+    font-family: var(--font-num);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-strong);
+  }
+  .stat .k {
+    margin-right: 4px;
+    color: var(--text-faint);
+    font-weight: 500;
   }
   .card.placing {
     border-color: var(--accent);

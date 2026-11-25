@@ -2,6 +2,9 @@
   import { STRUCTURE_KIND_META, UNIT_KIND_META } from "@openspace/shared";
   import BuildCard from "./BuildCard.svelte";
 
+  let { onPress, onRelease }: { onPress: (code: string) => void; onRelease: (code: string) => void } =
+    $props();
+
   /**
    * Hardcoded display order + hotkey labels — driven by what the game.ts
    * key bindings actually do, so renaming a kind here doesn't drift from
@@ -34,6 +37,8 @@
           label={c.label}
           hotkey={c.hotkey}
           cost={STRUCTURE_KIND_META[c.kind]?.cost ?? 0}
+          {onPress}
+          {onRelease}
         />
       {/each}
     </div>
@@ -48,6 +53,8 @@
           label={c.label}
           hotkey={c.hotkey}
           cost={UNIT_KIND_META[c.kind]?.cost ?? 0}
+          {onPress}
+          {onRelease}
         />
       {/each}
     </div>
@@ -68,8 +75,9 @@
     align-items: stretch;
     gap: 10px;
     padding: 6px 10px 8px;
-    pointer-events: none;
     user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
   }
   .group {
     display: flex;

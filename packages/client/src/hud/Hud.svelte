@@ -9,17 +9,22 @@
   import EventFeed from "./EventFeed.svelte";
   import RadialEmoteMenu from "./RadialEmoteMenu.svelte";
   import ReconnectOverlay from "./ReconnectOverlay.svelte";
+  import OnboardingHint from "./OnboardingHint.svelte";
 
-  let { onRespawn, onEmote }: {
+  let { onRespawn, onEmote, onPress, onRelease }: {
     onRespawn: () => void;
     onEmote: (kind: EmoteKind) => void;
+    /** Press / release a game key from on-screen UI (KeyboardEvent.code). */
+    onPress: (code: string) => void;
+    onRelease: (code: string) => void;
   } = $props();
 </script>
 
 <PlayerList />
 <StatsPanel />
-<BuildHud />
+<BuildHud {onPress} {onRelease} />
 <Status />
+<OnboardingHint />
 <EventFeed />
 <DebugPanel />
 <RespawnOverlay {onRespawn} />

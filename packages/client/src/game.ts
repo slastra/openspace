@@ -33,6 +33,7 @@ import { createExplosion } from "./effects/explosion.js";
 import { createTargetCrosshair, type TargetCrosshair } from "./effects/target-crosshair.js";
 import { parseHexColor } from "./render/colors.js";
 import { pollBuildInfo } from "./net/build-info-poll.js";
+import { isTouch } from "./hud/device.js";
 import { BUILD_INFO } from "@openspace/shared";
 import { DebugOverlay } from "./debug/overlay.js";
 import { HealTetherLayer } from "./render/heal-tether.js";
@@ -602,6 +603,7 @@ export function startGame({ renderer, input, net }: GameDeps) {
 
   let lastFrame = performance.now();
   let lastCredits = -1;
+  const onboarding = createOnboarding();
   let lastDebugPush = 0;
   renderer.app.ticker.add(() => {
     const now = performance.now();
@@ -728,10 +730,61 @@ export function startGame({ renderer, input, net }: GameDeps) {
         : "";
 
     pushHudUpdates(localUnitCounts, localStructureCounts, localUnitTotal, local, placing);
+    hud.hint = onboarding.step(local, localStructureCounts, localUnitTotal, placing !== null || recycling);
     pushLeaderboard(net);
     hud.isDead = local !== null && local.hp <= 0;
     hud.pruneFeed(now);
   });
+}
+
+const ONBOARDED_KEY = "openspace.onboarded";
+
+/**
+ * First-session coaching: a short hint per step (leave the spawn ring,
+ * place a base, spawn units) until the pilot has a few units, then never
+ * again on this browser.
+ */
+function createOnboarding() {
+  let done = false;
+  try {
+    done = localStorage.getItem(ONBOARDED_KEY) === "1";
+  } catch {
+    // Storage blocked: just coach every session.
+  }
+  const verb = isTouch ? "Tap" : "Press";
+  return {
+    step(
+      local: LocalPlayer | null,
+      structureCounts: Record<string, number>,
+      fleet: number,
+      busy: boolean,
+    ): string {
+      if (done || !local || local.hp <= 0 || busy) return "";
+      if ((structureCounts.base ?? 0) === 0) {
+        const p = local.prediction.position;
+        const dx = p.x - WORLD_WIDTH / 2;
+        const dy = p.y - WORLD_HEIGHT / 2;
+        if (dx * dx + dy * dy < SPAWN_BUBBLE_RADIUS_U * SPAWN_BUBBLE_RADIUS_U) {
+          return isTouch
+            ? "Touch and hold to steer. Fly out of the green ring to find a spot for your base."
+            : "Steer with the mouse. Fly out of the green ring to find a spot for your base.";
+        }
+        return `${verb} ${isTouch ? "Base" : "Q"}, then ${isTouch ? "tap" : "click"} to place your base. It's free.`;
+      }
+      if (fleet < 3) {
+        return isTouch
+          ? "Hold a unit card to spawn. Miners gather minerals; rammers fight."
+          : "Hold A to spawn rammers, or S for miners to gather minerals. Hover a card for details.";
+      }
+      done = true;
+      try {
+        localStorage.setItem(ONBOARDED_KEY, "1");
+      } catch {
+        // Ignore: the hint just comes back next session.
+      }
+      return "";
+    },
+  };
 }
 
 /** Wire emote enums to their world-space glyph. The HUD feed uses its
