@@ -20,7 +20,8 @@ export interface UnitKindMeta {
   contactRadius: number;
   /** Top speed when chasing a target. */
   attackSpeed: number;
-  /** Speed when returning to / maintaining formation. */
+  /** Max speed of the correction toward the unit's formation slot, on top
+   *  of following the slot itself (see server/src/formation.ts). */
   formationSpeed: number;
   /** Distance at which a target is acquired. */
   aggroRadius: number;
@@ -59,10 +60,9 @@ export interface UnitKindMeta {
    *  gate on rotation alignment so the unit must physically face its target
    *  before firing (turret-like delay). Omitted = snap to desired angle. */
   rotationRateRadPerSec?: number;
-  /** Formation ring tier — lower = innermost. Owner's units are sorted by
-   *  (formationTier, slotIndex) before being assigned ring positions, so
-   *  support kinds (repair/shield) hug the player and front-liners (rammers)
-   *  push outward. Same tier ⇒ original spawn order is the tiebreaker. */
+  /** Formation tier — lower = closer to the anchor. Each tier gets a
+   *  contiguous band of formation slots, inner tiers first, so support kinds
+   *  (repair/shield) hug the player and front-liners (rammers) take the rim. */
   formationTier: number;
 }
 

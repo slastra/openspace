@@ -40,7 +40,6 @@ import {
   playerDesiredVelocity,
   playerFleetDragFactor,
   shortestAngleDelta,
-  stationTarget,
   teamOf,
   UNIT_KIND_META,
 } from "@openspace/shared";
@@ -56,13 +55,14 @@ import {
   setColliderOwnerBit,
   stepWorld,
 } from "./physics.js";
-import { arriveAtStation, lookupKind } from "./behaviors.js";
+import { KindBehavior, Velocity, lookupKind } from "./behaviors.js";
+import { FormationState, holdFormation, planFormations } from "./formation.js";
 import {
   TickGrids,
   gridNearestEnemy,
   rebuildTickGrids,
 } from "./spatial.js";
-import type { Player, SlotInfo, Unit, UnitKindMeta } from "@openspace/shared";
+import type { Player, Unit, UnitKindMeta } from "@openspace/shared";
 
 /**
  * Side-table of physics references for an entity. Schema entities can't hold
@@ -94,11 +94,6 @@ export type TickEvent = {
   targetSessionId?: string;
 };
 
-/** Owner ship speed below which formation orbit runs at full rate. */
-const FORMATION_FREEZE_LO_SPEED = 30;
-/** Owner ship speed at and above which formation orbit is fully frozen. */
-const FORMATION_FREEZE_HI_SPEED = 100;
-
 /**
  * One server tick.
  *   1. Apply each player's most-recent queued input as a velocity to their body.
@@ -129,12 +124,9 @@ export interface SimContext {
    *  the set and teleports + heals each one. Players stay dead until they
    *  appear here, so dying never auto-respawns. */
   pendingRespawnSet: Set<string>;
-  /** Per-owner formation orbit phase (radians-of-time). Advances at full
-   *  rate while the owner is stationary and freezes while they're moving,
-   *  so units don't have to chase a slot that's both translating with the
-   *  ship and rotating around it — that compounding was visible as jitter
-   *  on snapshot-interpolated unit motion. */
-  formationPhaseByOwner: Map<string, number>;
+  /** Per-anchor formation frame and slot assignment (anchor = owner id,
+   *  or wreckage id for orphans). Maintained by `planFormations`. */
+  formations: Map<string, FormationState>;
   /** Per-entity previous-tick (x, y) for computing sample-to-sample velocity
    *  written to schema.vx/vy. Used by client Hermite interpolation; secant
    *  computed from positions matches what the client interpolates between
@@ -342,43 +334,17 @@ function applySupplyDeactivation(state: ArenaState) {
 }
 
 function runUnitAI(state: ArenaState, bodyRefs: Map<string, BodyRef>, ctx: SimContext) {
-  // Slot assignment: each owner's units get stations on concentric rings,
-  // sorted stably by id so slots don't reshuffle every tick.
-  const slotInfo = computeSlots(state);
-  // Server clock seconds — fallback phase for non-owner anchors (wreckages
-  // are stationary, so their orbit can run at full rate from global time).
-  const timeSeconds = state.serverTime / 1000;
-  // Per-owner motion state. `orbitScale` is 1 when the ship is at rest and
-  // ramps to 0 at FORMATION_FREEZE_HI_SPEED — used both to freeze the orbit
-  // phase (so units don't chase a rotating slot) and to blend between the
-  // orbital station velocity and a flock-with-the-ship velocity.
-  const ownerMotion = new Map<
-    string,
-    { vx: number; vy: number; phase: number; orbitScale: number }
-  >();
-  for (const ownerId of state.players.keys()) {
-    const ref = bodyRefs.get(ownerId);
-    let vx = 0;
-    let vy = 0;
-    if (ref) {
-      const v = bodyVelocity(ref.body);
-      vx = v.x;
-      vy = v.y;
-    }
-    const speed = Math.hypot(vx, vy);
-    const orbitScale = clamp(
-      1 - (speed - FORMATION_FREEZE_LO_SPEED) /
-        (FORMATION_FREEZE_HI_SPEED - FORMATION_FREEZE_LO_SPEED),
-      0,
-      1,
-    );
-    const prev = ctx.formationPhaseByOwner.get(ownerId) ?? timeSeconds;
-    const phase = prev + TICK_DT * orbitScale;
-    ctx.formationPhaseByOwner.set(ownerId, phase);
-    ownerMotion.set(ownerId, { vx, vy, phase, orbitScale });
-  }
-  const phaseFor = (ownerId: string | null): number =>
-    (ownerId !== null ? ownerMotion.get(ownerId)?.phase : undefined) ?? timeSeconds;
+  // Each owner's commanded velocity this tick (set by applyPlayerInputs):
+  // the feed-forward that keeps a formation locked to a moving ship.
+  const formation = planFormations(
+    state,
+    ctx.formations,
+    (ownerId) => {
+      const ref = bodyRefs.get(ownerId);
+      return ref ? bodyVelocity(ref.body) : { x: 0, y: 0 };
+    },
+    TICK_DT,
+  );
 
   for (const [unitId, unit] of state.units) {
     const ref = bodyRefs.get(unitId);
@@ -391,102 +357,66 @@ function runUnitAI(state: ArenaState, bodyRefs: Map<string, BodyRef>, ctx: SimCo
     if (!resolved) continue;
     const { behavior, meta } = resolved;
     const owner = state.players.get(unit.ownerId) ?? null;
-    const slot = slotInfo.get(unitId) ?? { index: 0, total: 1 };
 
-    // Inert orbit: orphan units anchor to their wreckage; deactivated
-    // (over-supply) units anchor to the live owner. Both drop targets
-    // and orbit at formation speed via arrive-at-station + boid.
-    if (unit.wreckageId) {
-      const w = state.wreckages.get(unit.wreckageId);
-      if (!w) {
-        setBodyVelocity(ref.body, 0, 0);
-        continue;
-      }
-      orbitAnchor(unit, ref, w.x, w.y, slot, meta, ctx, timeSeconds);
-      continue;
-    }
-    if (unit.deactivated && owner) {
-      orbitAnchor(unit, ref, owner.x, owner.y, slot, meta, ctx, phaseFor(owner.id));
-      continue;
-    }
-
-    // Dash override: while the owner is holding thrust, every unit drops
-    // its current task and falls back to formation. Uses arriveAtStation
-    // (with arrival decel) so a unit reaching its slot settles instead
-    // of overshooting and oscillating across the station. Speed is
-    // intentionally `attackSpeed` (lower than formationSpeed for every
-    // kind) — formationSpeed for rammers is 600, EXACTLY equal to the
-    // dashing ship's speed, which puts the chase on a numeric knife
-    // edge: with the slot moving at the same speed as the unit's max,
-    // any tiny perturbation flips the unit between "ahead" and "behind"
-    // and the swarm visibly vibrates. attackSpeed keeps every kind
-    // strictly below the ship so they trail predictably.
-    if (owner?.dashing) {
+    // Orphans (wreckage), over-supply sleepers, and every unit of a
+    // dashing owner (dash doubles as fleet recall) drop their target and
+    // hold formation. Everyone else may engage.
+    const dashing = !unit.wreckageId && owner?.dashing === true;
+    const holding = unit.wreckageId !== "" || unit.deactivated || dashing;
+    let desired: Velocity | null = null;
+    if (holding) {
       unit.targetId = "";
-      const station = stationTarget(owner.x, owner.y, slot, meta.contactRadius, phaseFor(owner.id));
-      const desired = arriveAtStation(unit.x, unit.y, station.x, station.y, meta.attackSpeed);
-      const adjusted = applySeparation(unit, desired, ctx, meta);
-      setBodyVelocity(ref.body, adjusted.vx, adjusted.vy);
-      continue;
-    }
-
-    // Stagger target re-acquisition to ~10Hz. The slot index + tick index
-    // mod 3 spreads the heavy passes evenly across frames so we never get a
-    // "whole world re-acquires this tick" CPU spike. A unit without a held
-    // target re-acquires immediately so newly-spawned units engage on tick 1
-    // rather than waiting up to two ticks (~67ms).
-    let target: Combatant | null;
-    const reacquire =
-      !unit.targetId || ((ctx.tickIndex + unit.slotIndex) % 3) === 0;
-    if (reacquire) {
-      target = behavior.acquireTarget(unit, state, meta, ctx.grids);
     } else {
-      target =
-        lookupCombatant(state, unit.targetId) ??
-        ((state.asteroids.get(unit.targetId) as unknown as Combatant) || null);
-      // Force a re-acquire if the held target is dead OR a wreckage orphan
-      // (neutral). Without the isNeutral check, gunners kept firing at
-      // ghost units after their owner died — projectiles correctly skip
-      // neutrals so the shots passed through and the gunner never moved on.
-      if (!target || target.hp <= 0 || isNeutral(target)) {
-        target = behavior.acquireTarget(unit, state, meta, ctx.grids);
-      }
+      const target = currentTarget(unit, behavior, meta, state, ctx);
+      unit.targetId = target ? target.id : "";
+      const engaged = behavior.engage(unit, target, meta);
+      // Separation only while engaging: chasers converge on one point, while
+      // formation slots are already spaced apart (and same-owner units
+      // don't collide physically).
+      if (engaged) desired = applySeparation(unit, engaged, ctx, meta);
     }
-    unit.targetId = target ? target.id : "";
-
-    const desired = behavior.desiredVelocity(
-      unit,
-      target,
-      owner,
-      meta,
-      slot,
-      phaseFor(owner?.id ?? null),
-    );
-    // Leader drift: when the unit isn't pursuing an enemy, add the owner's
-    // velocity as a baseline so the unit cruises with the ship by default.
-    // The behavior's velocity stays as the *relative* correction toward its
-    // slot (zero when on station, signed when ahead/behind). Replaces the
-    // earlier flock blend, which scaled both station and ownerVel together
-    // and produced a chronic speed mismatch — units would always run a bit
-    // slower than the ship and oscillate via cohesion overshoot.
-    if (!target && owner) {
-      const m = ownerMotion.get(owner.id);
-      if (m) {
-        desired.vx += m.vx;
-        desired.vy += m.vy;
-      }
+    if (!desired) {
+      const slot = formation.get(unitId);
+      // While dashing, cap the catch-up below the kind's formation speed so
+      // units that fell out of formation rejoin without overshooting.
+      desired = slot
+        ? holdFormation(unit, slot, dashing ? meta.attackSpeed : meta.formationSpeed)
+        : { vx: 0, vy: 0 };
     }
-    const adjusted = applySeparation(unit, desired, ctx, meta);
     // Acceleration cap: clamp the per-tick velocity *change* so sharp AI
     // intent flips (formation→chase, target switch, asteroid death) don't
-    // produce single-tick discontinuities that 20Hz snapshot interp renders
-    // as a visible kink. Standard Reynolds steering practice — limits dv/dt
-    // regardless of what the AI wants. The AI is still authoritative on
-    // intent; the body just ramps to that intent over a few ticks.
+    // produce single-tick discontinuities that snapshot interp renders as a
+    // visible kink. The AI is still authoritative on intent; the body just
+    // ramps to it over a few ticks.
     const cur = bodyVelocity(ref.body);
-    const limited = limitAcceleration(cur.x, cur.y, adjusted.vx, adjusted.vy);
+    const limited = limitAcceleration(cur.x, cur.y, desired.vx, desired.vy);
     setBodyVelocity(ref.body, limited.vx, limited.vy);
   }
+}
+
+/**
+ * The unit's target this tick. Re-acquisition is staggered to ~10Hz
+ * (slot index + tick index mod 3 spreads the passes across frames, so no
+ * tick re-acquires the whole world); a unit with no held target, or whose
+ * target died or turned neutral, re-acquires immediately.
+ */
+function currentTarget(
+  unit: Unit,
+  behavior: KindBehavior,
+  meta: UnitKindMeta,
+  state: ArenaState,
+  ctx: SimContext,
+): Combatant | null {
+  const reacquire = !unit.targetId || (ctx.tickIndex + unit.slotIndex) % 3 === 0;
+  if (!reacquire) {
+    const held =
+      lookupCombatant(state, unit.targetId) ??
+      ((state.asteroids.get(unit.targetId) as unknown as Combatant) || null);
+    // Neutral = a wreckage orphan: projectiles skip those, so a gunner held
+    // on one would fire at a ghost forever.
+    if (held && held.hp > 0 && !isNeutral(held)) return held;
+  }
+  return behavior.acquireTarget(unit, state, meta, ctx.grids);
 }
 
 /** Per-tick velocity-change cap, in world units. At 30Hz with MAX_ACCEL =
@@ -510,46 +440,12 @@ function limitAcceleration(
 }
 
 /**
- * Boid-style separation: nudge a unit's desired velocity away from any
- * friendly unit pressing within `SEPARATION_RADIUS` (≈ 3.5× contact radius).
- * Repulsion strength scales linearly with overlap depth so distant neighbors
- * barely register and near-touching ones get a strong push.
- *
- * Without this, multiple chasers/miners targeting the same point converge
- * into a buzzing cluster — the AI re-aims them at the same spot every tick
- * and the solver bounces them around. Separation breaks the symmetry so
- * they spread out around the target instead.
+ * Boid-style separation: nudge an engaging unit's velocity away from any
+ * friendly unit within `SEPARATION_RADIUS` (3.5× contact radius). Repulsion
+ * scales linearly with overlap depth so distant neighbors barely register
+ * and near-touching ones get a strong push. Without it, chasers and miners
+ * converging on one point bunch into a buzzing cluster.
  */
-/**
- * Park a unit in formation around an arbitrary anchor point. Used by the
- * inert-orbit branches in `runUnitAI` (wreckage orphans, supply-deactivated
- * sleepers) — clears the unit's target, computes its formation slot relative
- * to the anchor, applies arrival-style steering, and runs the same boid
- * separation as live units so the orbit doesn't collapse into a clump.
- */
-function orbitAnchor(
-  unit: Unit,
-  ref: BodyRef,
-  anchorX: number,
-  anchorY: number,
-  slot: SlotInfo,
-  meta: UnitKindMeta,
-  ctx: SimContext,
-  timeSeconds: number,
-) {
-  unit.targetId = "";
-  const station = stationTarget(anchorX, anchorY, slot, meta.contactRadius, timeSeconds);
-  const desired = arriveAtStation(
-    unit.x,
-    unit.y,
-    station.x,
-    station.y,
-    meta.formationSpeed,
-  );
-  const adjusted = applySeparation(unit, desired, ctx, meta);
-  setBodyVelocity(ref.body, adjusted.vx, adjusted.vy);
-}
-
 function applySeparation(
   unit: Unit,
   desired: { vx: number; vy: number },
@@ -588,38 +484,6 @@ function applySeparation(
   }
   const blend = meta.attackSpeed * 0.6;
   return { vx: desired.vx + sx * blend, vy: desired.vy + sy * blend };
-}
-
-function computeSlots(state: ArenaState): Map<string, SlotInfo> {
-  // Formation positions are sorted by (kind.formationTier, slotIndex) per
-  // owner: support kinds (repair/shield, tier 0) hug the player on the
-  // inner ring, front-liners (rammers, tier 4) push to the outside. Within
-  // a tier, the original spawn-order slotIndex is the stable tiebreaker so
-  // same-kind units don't reshuffle when a peer dies — only cross-tier
-  // spawns trigger a one-time visible shift outward for lower-priority
-  // kinds, which is the desired behavior.
-  const out = new Map<string, SlotInfo>();
-  const byOwner = new Map<string, Unit[]>();
-  for (const u of state.units.values()) {
-    let list = byOwner.get(u.ownerId);
-    if (!list) {
-      list = [];
-      byOwner.set(u.ownerId, list);
-    }
-    list.push(u);
-  }
-  for (const [, units] of byOwner) {
-    units.sort((a, b) => {
-      const ta = UNIT_KIND_META[a.kind]?.formationTier ?? 999;
-      const tb = UNIT_KIND_META[b.kind]?.formationTier ?? 999;
-      if (ta !== tb) return ta - tb;
-      return a.slotIndex - b.slotIndex;
-    });
-    for (let i = 0; i < units.length; i++) {
-      out.set(units[i]!.id, { index: i, total: units.length });
-    }
-  }
-  return out;
 }
 
 /** Sample-to-sample velocity (Δposition / TICK_DT) — what the client needs

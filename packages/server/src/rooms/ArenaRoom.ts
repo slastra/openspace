@@ -110,7 +110,7 @@ export class ArenaRoom extends Room<{ state: ArenaState }> {
     allocProjectileId: () => `r${++this.projectileCounter}`,
     allocWreckageId: () => `w${++this.wreckageCounter}`,
     pendingRespawnSet: new Set(),
-    formationPhaseByOwner: new Map(),
+    formations: new Map(),
     lastEntityPos: new Map(),
     inputCursors: new Map(),
     grids: createTickGrids(),

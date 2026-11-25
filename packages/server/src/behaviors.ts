@@ -2,14 +2,11 @@ import {
   ArenaState,
   Asteroid,
   Combatant,
-  Player,
-  SlotInfo,
   UNIT_KIND_META,
   Unit,
   UnitKindMeta,
   isNeutral,
   lookupCombatant,
-  stationTarget,
   teamOf,
 } from "@openspace/shared";
 import {
@@ -19,15 +16,16 @@ import {
   gridNearestFriendlyDamaged,
 } from "./spatial.js";
 
-export type { SlotInfo };
+export interface Velocity {
+  vx: number;
+  vy: number;
+}
 
 /**
- * Strategy interface for one unit kind. Behaviors return a desired velocity
- * (the simulation writes it into the body via `setLinvel`) — the physics
- * solver handles collision/separation.
- *
- * `slot` lets formation-style kinds give each unit its own target position
- * around the owner, so units aren't all chasing the same point.
+ * Strategy interface for one unit kind. A behavior only describes combat:
+ * which target to pick and how to move while engaging it. Holding formation
+ * is the default the simulation applies whenever `engage` returns null
+ * (see server/src/formation.ts), so kinds never re-implement it.
  */
 export interface KindBehavior {
   acquireTarget(
@@ -36,14 +34,8 @@ export interface KindBehavior {
     meta: UnitKindMeta,
     grids: TickGrids,
   ): Combatant | null;
-  desiredVelocity(
-    unit: Unit,
-    target: Combatant | null,
-    owner: Player | null,
-    meta: UnitKindMeta,
-    slot: SlotInfo,
-    timeSeconds: number,
-  ): { vx: number; vy: number };
+  /** Velocity while engaging `target`, or null to hold formation. */
+  engage(unit: Unit, target: Combatant | null, meta: UnitKindMeta): Velocity | null;
 }
 
 /**
@@ -107,29 +99,11 @@ export function defaultAcquireTarget(
   return gridNearestEnemy(grids.combatants, teamOf(unit), unit.x, unit.y, meta.aggroRadius);
 }
 
-/**
- * Rammer: charge enemies at full speed; otherwise settle into the unit's
- * assigned station on the formation ring. Slot angles are evenly spaced
- * and the ring radius scales with the swarm size, so each unit has its
- * own target point and they never compete for the same spot.
- */
+/** Rammer: charge enemies at full speed; otherwise hold formation. */
 const RAMMER: KindBehavior = {
   acquireTarget: defaultAcquireTarget,
-  desiredVelocity(unit, target, owner, meta, slot, timeSeconds) {
-    if (target) {
-      return chaseAtSpeed(unit.x, unit.y, target.x, target.y, meta.attackSpeed);
-    }
-    if (owner) {
-      const station = stationTarget(owner.x, owner.y, slot, meta.contactRadius, timeSeconds);
-      return arriveAtStation(
-        unit.x,
-        unit.y,
-        station.x,
-        station.y,
-        meta.formationSpeed,
-      );
-    }
-    return { vx: 0, vy: 0 };
+  engage(unit, target, meta) {
+    return target ? chaseAtSpeed(unit.x, unit.y, target.x, target.y, meta.attackSpeed) : null;
   },
 };
 
@@ -140,7 +114,7 @@ function chaseAtSpeed(
   tx: number,
   ty: number,
   speed: number,
-): { vx: number; vy: number } {
+): Velocity {
   const dx = tx - fx;
   const dy = ty - fy;
   const dist = Math.hypot(dx, dy);
@@ -150,51 +124,14 @@ function chaseAtSpeed(
 }
 
 /**
- * Arrival steering: full speed at distance, linear taper through the
- * "arrival zone" so the unit decelerates into its station and settles
- * instead of overshooting and oscillating. STOP_RANGE is a small dead-band
- * so floating-point jitter doesn't keep the body twitching forever.
- *
- * ARRIVAL_RANGE must exceed `formationSpeed * TICK_DT` (max travel per tick)
- * or units will still overshoot before the taper kicks in.
- */
-const ARRIVAL_RANGE = 50;
-// Bumped from 2 → 5: with the orbital formation moving the station ~15 u/s
-// on the inner ring, the wider deadband stops idle units from twitching
-// every tick as the station nudges in and out of a tight 2-unit window.
-const STOP_RANGE = 5;
-
-export function arriveAtStation(
-  fx: number,
-  fy: number,
-  tx: number,
-  ty: number,
-  speed: number,
-): { vx: number; vy: number } {
-  const dx = tx - fx;
-  const dy = ty - fy;
-  const dist = Math.hypot(dx, dy);
-  if (dist < STOP_RANGE) return { vx: 0, vy: 0 };
-  const scale =
-    dist >= ARRIVAL_RANGE
-      ? 1
-      : (dist - STOP_RANGE) / (ARRIVAL_RANGE - STOP_RANGE);
-  const inv = 1 / dist;
-  return { vx: dx * inv * speed * scale, vy: dy * inv * speed * scale };
-}
-
-/**
- * Laser — pure defensive turret. Never leaves the formation orbit; just
- * zaps any enemy that strays into ability range. Acquisition still uses
- * `defaultAcquireTarget` so `runUnitAbilities` knows what to fire at, but
- * movement is always toward the assigned station.
+ * Laser — pure defensive turret. Never leaves formation; just zaps any
+ * enemy that strays into ability range. Acquisition still uses
+ * `defaultAcquireTarget` so `runUnitAbilities` knows what to fire at.
  */
 const LASER_DEFENSIVE: KindBehavior = {
   acquireTarget: defaultAcquireTarget,
-  desiredVelocity(unit, _target, owner, meta, slot, timeSeconds) {
-    if (!owner) return { vx: 0, vy: 0 };
-    const station = stationTarget(owner.x, owner.y, slot, meta.contactRadius, timeSeconds);
-    return arriveAtStation(unit.x, unit.y, station.x, station.y, meta.formationSpeed);
+  engage() {
+    return null;
   },
 };
 
@@ -208,7 +145,7 @@ const LASER_DEFENSIVE: KindBehavior = {
  */
 const KITE_RANGED: KindBehavior = {
   acquireTarget: defaultAcquireTarget,
-  desiredVelocity(unit, target, owner, meta, slot, timeSeconds) {
+  engage(unit, target, meta) {
     if (target) {
       const range = meta.abilityRange ?? meta.aggroRadius;
       const dx = unit.x - target.x;
@@ -230,19 +167,15 @@ const KITE_RANGED: KindBehavior = {
       const strafe = meta.attackSpeed * 0.4;
       return { vx: -dy * inv * strafe, vy: dx * inv * strafe };
     }
-    if (owner) {
-      const station = stationTarget(owner.x, owner.y, slot, meta.contactRadius, timeSeconds);
-      return arriveAtStation(unit.x, unit.y, station.x, station.y, meta.formationSpeed);
-    }
-    return { vx: 0, vy: 0 };
+    return null;
   },
 };
 
 /**
  * Repair — locks onto the nearest damaged friendly within `repairRange` and
  * tethers a heal beam onto them. Movement: closes if too far, drifts to a
- * trailing position behind the patient if in range. Falls back to formation
- * orbit when nothing needs healing.
+ * trailing position behind the patient if in range. Holds formation when
+ * nothing needs healing.
  *
  * The actual HP restore is applied per-tick by `runRepairs` in simulation.ts;
  * this behavior just handles target selection and positioning.
@@ -274,7 +207,7 @@ const REPAIR_BEHAVIOR: KindBehavior = {
       range,
     );
   },
-  desiredVelocity(unit, target, owner, meta, slot, timeSeconds) {
+  engage(unit, target, meta) {
     if (target) {
       const range = meta.repairRange ?? 200;
       const dx = target.x - unit.x;
@@ -293,11 +226,7 @@ const REPAIR_BEHAVIOR: KindBehavior = {
       }
       return { vx: 0, vy: 0 };
     }
-    if (owner) {
-      const station = stationTarget(owner.x, owner.y, slot, meta.contactRadius, timeSeconds);
-      return arriveAtStation(unit.x, unit.y, station.x, station.y, meta.formationSpeed);
-    }
-    return { vx: 0, vy: 0 };
+    return null;
   },
 };
 
@@ -305,8 +234,8 @@ const REPAIR_BEHAVIOR: KindBehavior = {
  * Miner — ignores enemies; flies to the nearest live asteroid and presses
  * against it (Rapier's solver re-issues contact-begin events while the body
  * is held against the static rock, so damage is applied per re-contact in
- * resolveCollisions). When no asteroids are in range, drifts to its formation
- * station like a rammer at rest.
+ * resolveCollisions). When no asteroids are in range, holds formation like
+ * a rammer at rest.
  *
  * Targets are stored on `unit.targetId` so the debug overlay can draw a line
  * to the rock being mined; the actual damage application lives in
@@ -331,35 +260,22 @@ const MINER: KindBehavior = {
     const found = gridNearestAsteroid(grids.asteroids, unit.x, unit.y, range);
     return (found as unknown as Combatant) ?? null;
   },
-  desiredVelocity(unit, target, owner, meta, slot, timeSeconds) {
-    if (target) {
-      // Press the rock at full speed — the impact wears the miner down via
-      // velocity-scaled asteroid contact damage in `resolveCollisions`,
-      // which fits the brute-force mining fantasy.
-      return chaseAtSpeed(unit.x, unit.y, target.x, target.y, meta.attackSpeed);
-    }
-    if (owner) {
-      const station = stationTarget(owner.x, owner.y, slot, meta.contactRadius, timeSeconds);
-      return arriveAtStation(
-        unit.x,
-        unit.y,
-        station.x,
-        station.y,
-        meta.formationSpeed,
-      );
-    }
-    return { vx: 0, vy: 0 };
+  engage(unit, target, meta) {
+    // Press the rock at full speed — the impact wears the miner down via
+    // velocity-scaled asteroid contact damage in `resolveCollisions`,
+    // which fits the brute-force mining fantasy.
+    return target ? chaseAtSpeed(unit.x, unit.y, target.x, target.y, meta.attackSpeed) : null;
   },
 };
 
 /**
  * To add a new kind:
  *   1. Add an entry to UNIT_KIND_META in shared/kinds.ts
- *   2. Add a behavior here (often just spread defaultAcquireTarget and a
- *      kind-specific desiredVelocity)
+ *   2. Add a behavior here (usually defaultAcquireTarget plus an `engage`
+ *      that returns null whenever the unit should hold formation)
  *   3. Add a render fn in client/src/render/units.ts
  */
-// Shielders share the laser's pure-formation behavior — they hold station
+// Shielders share the laser's pure-formation behavior — they hold formation
 // and let `runShieldAuras` (in simulation.ts) project the aura per tick.
 export const kindBehaviors: Record<string, KindBehavior> = {
   rammer: RAMMER,

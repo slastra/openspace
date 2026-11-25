@@ -120,3 +120,93 @@ describe("grid-indexed passes", () => {
     expect(ally.maxShield).toBe(UNIT_KIND_META.shielder!.shieldGrant);
   });
 });
+
+describe("formation", () => {
+  const KINDS = ["rammer", "miner", "gunner", "laser", "repair", "shielder"];
+
+  /** Max |second difference| of each unit's ship-relative position over
+   *  `ticks` ticks: zero when the swarm moves rigidly with the ship. */
+  function measureJerk(
+    w: Awaited<ReturnType<typeof createTestWorld>>,
+    shipId: string,
+    ticks: number,
+    input: () => void,
+  ): number {
+    const ship = w.state.players.get(shipId)!;
+    const hist = new Map<string, { x: number; y: number }[]>();
+    for (let k = 0; k < ticks; k++) {
+      input();
+      w.tick();
+      for (const u of w.state.units.values()) {
+        let h = hist.get(u.id);
+        if (!h) hist.set(u.id, (h = []));
+        h.push({ x: u.x - ship.x, y: u.y - ship.y });
+      }
+    }
+    let max = 0;
+    for (const h of hist.values()) {
+      for (let i = 2; i < h.length; i++) {
+        const ax = h[i]!.x - 2 * h[i - 1]!.x + h[i - 2]!.x;
+        const ay = h[i]!.y - 2 * h[i - 1]!.y + h[i - 2]!.y;
+        max = Math.max(max, Math.hypot(ax, ay));
+      }
+    }
+    return max;
+  }
+
+  it("holds a large swarm rigid around a cruising, turning ship", async () => {
+    const w = await createTestWorld();
+    const ship = w.addPlayer("a", 3000, 3000);
+    for (let i = 0; i < 200; i++) w.addUnit("a", KINDS[i % KINDS.length]!, 3000 + (i % 20) * 10, 2800 + i);
+    let k = 0;
+    const steer = () => {
+      const ang = Math.sin(k++ / 40) * 1.2;
+      w.pushInput("a", ship.x + Math.cos(ang) * 1000, ship.y + Math.sin(ang) * 1000);
+    };
+    measureJerk(w, "a", 150, steer); // settle
+    expect(measureJerk(w, "a", 150, steer)).toBeLessThan(0.05);
+  });
+
+  it("spins smoothly parked on top of its own base", async () => {
+    const w = await createTestWorld();
+    w.addPlayer("a", 3000, 3000);
+    w.addStructure("a", "base", 3000, 3150);
+    w.addStructure("a", "supply", 3150, 3000);
+    for (let i = 0; i < 160; i++) w.addUnit("a", KINDS[i % KINDS.length]!, 3000, 3150);
+    measureJerk(w, "a", 200, () => {}); // settle out of the base
+    // Before owner pass-through and the rigid disc: 4.5 u/tick² spikes.
+    expect(measureJerk(w, "a", 150, () => {})).toBeLessThan(0.05);
+  });
+
+  it("a spawn moves at most one existing unit per formation tier", async () => {
+    const w = await createTestWorld();
+    w.addPlayer("a", 3000, 3000);
+    for (let i = 0; i < 60; i++) w.addUnit("a", KINDS[i % KINDS.length]!, 3000, 3000);
+    for (let i = 0; i < 200; i++) w.tick();
+    const before = new Map(w.ctx.formations.get("a")!.slotOf);
+    w.addUnit("a", "repair", 3000, 3000); // innermost tier: shifts every band
+    w.addUnit("a", "rammer", 3000, 3000); // outermost tier
+    w.tick();
+    const after = w.ctx.formations.get("a")!.slotOf;
+    let moved = 0;
+    for (const [id, slot] of before) if (after.get(id) !== slot) moved++;
+    expect(moved).toBeLessThanOrEqual(4);
+  });
+
+  it("orphans regroup around their wreckage", async () => {
+    const w = await createTestWorld();
+    const owner = w.addPlayer("a", 3000, 3000);
+    for (let i = 0; i < 30; i++) w.addUnit("a", KINDS[i % KINDS.length]!, 3000, 3000);
+    for (let i = 0; i < 60; i++) w.tick();
+    owner.hp = 0;
+    w.tick(); // death: wreckage spawned, units orphaned
+    const wreck = [...w.state.wreckages.values()][0]!;
+    for (let i = 0; i < 120; i++) w.tick();
+    for (const u of w.state.units.values()) {
+      expect(u.wreckageId).toBe(wreck.id);
+      const r = Math.hypot(u.x - wreck.x, u.y - wreck.y);
+      expect(r).toBeGreaterThan(140);
+      expect(r).toBeLessThan(260);
+    }
+  });
+});

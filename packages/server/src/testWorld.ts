@@ -56,7 +56,7 @@ export async function createTestWorld(): Promise<TestWorld> {
     allocProjectileId: () => `p${++counter}`,
     allocWreckageId: () => `w${++counter}`,
     pendingRespawnSet: new Set(),
-    formationPhaseByOwner: new Map(),
+    formations: new Map(),
     lastEntityPos: new Map(),
     inputCursors: new Map(),
     grids: createTickGrids(),

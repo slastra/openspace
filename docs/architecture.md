@@ -11,7 +11,7 @@ packages/shared/      cross-process source of truth
   kinds.ts            UNIT_KIND_META — rammer / miner / gunner / laser / repair / shielder
   structures.ts       STRUCTURE_KIND_META — base / supply / turret / wall / medbay + recycle math
   combat.ts           Combatant union; type guards; targeting helpers
-  formation.ts        multi-ring orbit slot math (server + client agree)
+  formation.ts        sunflower-disc formation slot layout
   movement.ts         stepPlayer (used by client prediction; server uses Rapier)
   types.ts            wire message types (inputs, build/recycle, GameEvent, EmoteMessage)
 
@@ -22,7 +22,8 @@ packages/server/
                       mining → abilities → repairs → shields → projectiles →
                       dash burn → explosions → wreckage claim → cull/respawn,
                       with a transient event channel (kills, base-attack alerts)
-  behaviors.ts        per-kind targeting + desired-velocity registry
+  behaviors.ts        per-kind targeting + engage-velocity registry
+  formation.ts        per-anchor formation frame, slot assignment, steering
   spatial.ts          uniform-grid neighbor index for O(1) acquire / aura queries
 
 packages/client/
@@ -70,6 +71,33 @@ packages/client/
 - **Area-of-interest** filtering via Colyseus StateView: each client
   only sees entities within ~1500u of its ship (with hysteresis to kill
   edge-flicker).
+
+## Formations
+
+Units that aren't engaging hold a formation around their anchor: the
+owner's ship, or the wreckage they orbit once orphaned.
+
+- **Layout** (`shared/src/formation.ts`): a sunflower disc. Slot *i* sits
+  at radius `sqrt(R0² + i·A/π)` and angle `i·φ` (the golden angle), so
+  every slot owns the same area and the disc stays evenly packed at any
+  size. Slot *i* never depends on the swarm size, so a new unit adds one
+  slot at the rim and nothing else moves.
+- **Frame** (`server/src/formation.ts`): the whole disc rotates as one
+  rigid body, at a constant rim speed while the anchor is parked and not
+  at all once it moves faster than 100 u/s. Slots never cross each other.
+- **Assignment**: each formation tier gets a contiguous band of slots,
+  inner tiers first. A unit keeps its slot while it's still in its band,
+  and displaced units or newcomers take the nearest free one, so a spawn
+  or death moves at most one unit per band. Assignment only reruns when
+  the anchor's membership changes.
+- **Steering**: `holdFormation` follows the slot's own velocity (anchor
+  velocity plus spin) and adds a proportional correction toward it,
+  capped at the kind's `formationSpeed`. It is first order, so units ease
+  onto their slot without overshoot and sit still on it.
+- **Behaviors only describe combat.** `KindBehavior.engage` returns a
+  velocity while the unit is engaging, or `null` to hold formation.
+  Orphans, over-supply sleepers, and the whole fleet of a dashing owner
+  always hold formation. Boid separation applies only to engaging units.
 
 ## Combat + economy
 

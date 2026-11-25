@@ -137,9 +137,9 @@ export class Unit extends Schema {
   declare fireCount: number;
   /** Empty when in formation; entity id (unit or player) when chasing/targeting. */
   declare targetId: string;
-  /** Stable per-owner slot index assigned on spawn. Drives formation position
-   *  via `stationOffset`; doesn't compress when peers die, so survivors don't
-   *  reshuffle to new stations. */
+  /** Per-owner spawn order, assigned on spawn and never compacted. Picks
+   *  which units sleep when over the supply cap, staggers target
+   *  re-acquisition, and breaks ties in formation slot assignment. */
   declare slotIndex: number;
   /** Set when this unit is orphaned by its owner's death — it orbits the
    *  named wreckage instead of chasing/mining/etc. Cleared when claimed. */
