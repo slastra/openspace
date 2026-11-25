@@ -137,9 +137,11 @@ export class Unit extends Schema {
   declare fireCount: number;
   /** Empty when in formation; entity id (unit or player) when chasing/targeting. */
   declare targetId: string;
-  /** Per-owner spawn order, assigned on spawn and never compacted. Picks
-   *  which units sleep when over the supply cap, staggers target
-   *  re-acquisition, and breaks ties in formation slot assignment. */
+  /** SERVER-ONLY, not synced (absent from defineTypes below). Per-owner
+   *  ordinal: a spawn or claim takes the owner's lowest free value, and
+   *  survivors are never renumbered when a peer dies. Picks which units
+   *  sleep when over the supply cap, staggers target re-acquisition, and
+   *  breaks ties in formation slot assignment. */
   declare slotIndex: number;
   /** Set when this unit is orphaned by its owner's death — it orbits the
    *  named wreckage instead of chasing/mining/etc. Cleared when claimed. */
@@ -192,7 +194,6 @@ defineTypes(Unit, {
   maxShield: "uint16",
   fireCount: "uint16",
   targetId: "string",
-  slotIndex: "uint8",
   wreckageId: "string",
   deactivated: "boolean",
 });

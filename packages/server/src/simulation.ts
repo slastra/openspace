@@ -1221,6 +1221,7 @@ function claimWreckages(
         if (ref) removeCombatantBody(phys, ref.body, ref.colliderHandle);
         bodyRefs.delete(uid);
         state.units.delete(uid);
+        forgetUnit(ctx, uid);
       }
       removed.push(wid);
       continue;
@@ -1244,10 +1245,14 @@ function claimWreckages(
 
     claimer.credits += w.credits;
     const claimerBit = ctx.ownerBitOf?.(claimerId);
+    const takenSlots = ownerSlotIndexes(state, claimerId);
     for (const u of state.units.values()) {
       if (u.wreckageId !== wid) continue;
       u.ownerId = claimerId;
       u.wreckageId = "";
+      // Renumber into the claimer's sequence; the old owner's indexes
+      // would collide with the claimer's own units.
+      u.slotIndex = takeLowestFreeSlot(takenSlots);
       const meta = UNIT_KIND_META[u.kind];
       if (meta) claimer.supplyUsed += meta.supplyCost;
       // Each claimed unit re-counts toward the new captain's fleet drag —
@@ -1265,6 +1270,30 @@ function claimWreckages(
   }
 
   for (const wid of removed) state.wreckages.delete(wid);
+}
+
+/** Drop every per-unit side-table entry for a unit leaving the world. */
+export function forgetUnit(ctx: SimContext, id: string) {
+  ctx.unitCooldownById.delete(id);
+  ctx.lastEntityPos.delete(id);
+}
+
+/** The `slotIndex` values held by `ownerId`'s units (orphans included,
+ *  since they keep their dead owner's id until claimed). */
+export function ownerSlotIndexes(state: ArenaState, ownerId: string): Set<number> {
+  const taken = new Set<number>();
+  for (const u of state.units.values()) {
+    if (u.ownerId === ownerId) taken.add(u.slotIndex);
+  }
+  return taken;
+}
+
+/** Take (and mark taken) the lowest index not in `taken`. */
+export function takeLowestFreeSlot(taken: Set<number>): number {
+  let i = 0;
+  while (taken.has(i)) i++;
+  taken.add(i);
+  return i;
 }
 
 function cullAndRespawn(
@@ -1295,7 +1324,7 @@ function cullAndRespawn(
     if (ref) removeCombatantBody(phys, ref.body, ref.colliderHandle);
     bodyRefs.delete(id);
     state.units.delete(id);
-    ctx.unitCooldownById.delete(id);
+    forgetUnit(ctx, id);
   }
 
   // Destroyed structures → remove body + state, drop owner's supply cap by

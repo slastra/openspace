@@ -268,3 +268,38 @@ describe("formation", () => {
     }
   });
 });
+
+describe("bookkeeping", () => {
+  it("forgets per-unit side tables when units die", async () => {
+    const w = await createTestWorld();
+    w.addPlayer("a", 3000, 3000);
+    const units = Array.from({ length: 20 }, () => w.addUnit("a", "gunner", 3000, 3000));
+    w.tick();
+    for (const u of units) u.hp = 0;
+    w.tick();
+    expect(w.state.units.size).toBe(0);
+    for (const u of units) {
+      expect(w.ctx.lastEntityPos.has(u.id)).toBe(false);
+      expect(w.ctx.unitCooldownById.has(u.id)).toBe(false);
+    }
+  });
+
+  it("renumbers claimed units into the claimer's slot sequence", async () => {
+    const w = await createTestWorld();
+    const dead = w.addPlayer("a", 3000, 3000);
+    const claimer = w.addPlayer("b", 5000, 5000);
+    for (let i = 0; i < 5; i++) w.addUnit("a", "gunner", 3000, 3000);
+    for (let i = 0; i < 5; i++) w.addUnit("b", "gunner", 5000, 5000);
+    w.tick();
+    dead.hp = 0;
+    w.tick(); // wreckage spawns, a's units orphaned
+    const wreck = [...w.state.wreckages.values()][0]!;
+    w.bodyRefs.get("b")!.body.setTranslation({ x: wreck.x, y: wreck.y }, true);
+    claimer.x = wreck.x;
+    claimer.y = wreck.y;
+    w.tick(); // claim
+    const mine = [...w.state.units.values()].filter((u) => u.ownerId === "b");
+    expect(mine.length).toBe(10);
+    expect(new Set(mine.map((u) => u.slotIndex)).size).toBe(10);
+  });
+});

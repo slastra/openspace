@@ -15,10 +15,12 @@
     "@colyseus/ws-transport": "^0.18.5",
     "@dimforge/rapier2d-compat": "^0.21.0",
     "@openspace/shared": "workspace:*",
-    "colyseus": "^0.18.12"
+    "colyseus": "^0.18.12",
+    "express": "^5.3.0"
   },
   "devDependencies": {
     "@colyseus/sdk": "^0.18.10",
+    "@types/express": "^5.0.6",
     "@types/node": "^22.20.7",
     "tsx": "^4.23.15",
     "typescript": "~6.0.3"

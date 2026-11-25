@@ -64,7 +64,14 @@ import {
   removeCombatantBody,
   WALL_ENTITY_ID,
 } from "../physics.js";
-import { BodyRef, SimContext, simulateTick } from "../simulation.js";
+import {
+  BodyRef,
+  SimContext,
+  forgetUnit,
+  ownerSlotIndexes,
+  simulateTick,
+  takeLowestFreeSlot,
+} from "../simulation.js";
 import { createTickGrids } from "../spatial.js";
 
 /** Dev-only: rich joins for testing big swarms. Set by `pnpm dev`. */
@@ -454,6 +461,8 @@ export class ArenaRoom extends Room<{ state: ArenaState }> {
       this.freeOwnerBits.push(leaverBit);
     }
     this.simCtx.creditAccrual.delete(client.sessionId);
+    this.simCtx.lastEntityPos.delete(client.sessionId);
+    this.simCtx.lastBaseAlertAt.delete(client.sessionId);
     this.simCtx.lastAttackerByVictim.delete(client.sessionId);
     this.simCtx.pendingRespawnSet.delete(client.sessionId);
     // Also drop any entries where the leaver was the attacker — stale references.
@@ -471,7 +480,7 @@ export class ArenaRoom extends Room<{ state: ArenaState }> {
       if (ref) removeCombatantBody(this.physics, ref.body, ref.colliderHandle);
       this.bodyRefs.delete(id);
       this.state.units.delete(id);
-      this.simCtx.unitCooldownById.delete(id);
+      forgetUnit(this.simCtx, id);
     }
 
     // Tear down any structures the leaver placed.
@@ -814,13 +823,7 @@ export class ArenaRoom extends Room<{ state: ArenaState }> {
    * keep their stations instead of reshuffling.
    */
   private allocSlot(ownerId: string): number {
-    const taken = new Set<number>();
-    for (const u of this.state.units.values()) {
-      if (u.ownerId === ownerId) taken.add(u.slotIndex);
-    }
-    for (let i = 0; ; i++) {
-      if (!taken.has(i)) return i;
-    }
+    return takeLowestFreeSlot(ownerSlotIndexes(this.state, ownerId));
   }
 
   private isAsteroidPlacementClear(x: number, y: number, radius: number): boolean {
