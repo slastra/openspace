@@ -83,7 +83,7 @@ the cursor.
 
 | Command | Effect |
 | --- | --- |
-| `pnpm dev` | Server (2567) + client (5173) with hot reload |
+| `pnpm dev` | Server (2567) + client (5173) with hot reload, in dev sandbox mode (`DEV_SANDBOX=1`: joins start with 100k credits and a 2000 supply cap) |
 | `pnpm typecheck` | Strict TS across all packages (incl. svelte-check) |
 | `pnpm lint` | ESLint over the repo |
 | `pnpm test` | Vitest for shared pure helpers |

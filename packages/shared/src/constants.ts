@@ -28,6 +28,11 @@ export const UNIT_SPAWN_COOLDOWN_MS = 250;
 export const STARTING_CREDITS = 20;
 /** Supply cap a player joins with — enough for a starter swarm before any structures. */
 export const STARTING_SUPPLY_CAP = 4;
+/** Dev sandbox (server started with DEV_SANDBOX=1, which only the
+ *  `pnpm dev` script sets): joining players get these instead, so a big
+ *  swarm can be fielded immediately for testing. Never set in production. */
+export const DEV_SANDBOX_CREDITS = 100_000;
+export const DEV_SANDBOX_SUPPLY_CAP = 2_000;
 /** All structures snap to this world-grid spacing on placement. Reuses the visual GRID_SPACING. */
 export const STRUCTURE_GRID_SNAP = 100;
 /** Sight range (world units) of a friendly entity for revealing enemy structures on the minimap. */

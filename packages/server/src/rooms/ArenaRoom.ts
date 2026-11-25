@@ -21,6 +21,8 @@ import {
   BuildStructureMessage,
   CREDITS_PER_ASTEROID_HP,
   DesignateTargetMessage,
+  DEV_SANDBOX_CREDITS,
+  DEV_SANDBOX_SUPPLY_CAP,
   LeaderboardEntry,
   MAX_PLAYERS_PER_ROOM,
   MAX_STRUCTURES_PER_PLAYER,
@@ -64,6 +66,9 @@ import {
 } from "../physics.js";
 import { BodyRef, SimContext, simulateTick } from "../simulation.js";
 import { createTickGrids } from "../spatial.js";
+
+/** Dev-only: rich joins for testing big swarms. Set by `pnpm dev`. */
+const DEV_SANDBOX = process.env.DEV_SANDBOX === "1";
 
 /** Width of the static perimeter walls in world units. */
 const WALL_THICKNESS = 40;
@@ -342,7 +347,7 @@ export class ArenaRoom extends Room<{ state: ArenaState }> {
       });
     });
 
-    console.log(`[ArenaRoom ${this.roomId}] created`);
+    console.log(`[ArenaRoom ${this.roomId}] created${DEV_SANDBOX ? " (DEV_SANDBOX)" : ""}`);
   }
 
   private spawnUnit(ownerId: string, kind: string, x: number, y: number) {
@@ -402,6 +407,10 @@ export class ArenaRoom extends Room<{ state: ArenaState }> {
     player.invulnerableUntil = this.state.serverTime + SPAWN_INVULN_MS;
     player.supplyCap = STARTING_SUPPLY_CAP;
     player.supplyUsed = 0;
+    if (DEV_SANDBOX) {
+      player.credits = DEV_SANDBOX_CREDITS;
+      player.supplyCap = DEV_SANDBOX_SUPPLY_CAP;
+    }
     this.colorCursor++;
 
     this.state.players.set(client.sessionId, player);
