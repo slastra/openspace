@@ -10,8 +10,8 @@
     "typecheck": "svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
+    "@colyseus/sdk": "^0.18.10",
     "@openspace/shared": "workspace:*",
-    "colyseus.js": "^0.16.22",
     "pixi.js": "^8.23.0",
     "svelte": "^5.59.1"
   },

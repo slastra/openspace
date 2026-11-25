@@ -11,15 +11,15 @@
     "loadtest": "NODE_OPTIONS=--conditions=source tsx scripts/loadtest.ts"
   },
   "dependencies": {
-    "@colyseus/schema": "^3.0.76",
-    "@colyseus/ws-transport": "^0.16.4",
+    "@colyseus/schema": "^5.0.51",
+    "@colyseus/ws-transport": "^0.18.5",
     "@dimforge/rapier2d-compat": "^0.21.0",
     "@openspace/shared": "workspace:*",
-    "colyseus": "^0.16.4"
+    "colyseus": "^0.18.12"
   },
   "devDependencies": {
+    "@colyseus/sdk": "^0.18.10",
     "@types/node": "^22.20.7",
-    "colyseus.js": "^0.16.22",
     "tsx": "^4.23.15",
     "typescript": "~6.0.3"
   }

@@ -1,5 +1,4 @@
-import * as Colyseus from "colyseus.js";
-import { getStateCallbacks } from "colyseus.js";
+import { Client, getStateCallbacks } from "@colyseus/sdk";
 import {
   ArenaState,
   Asteroid,
@@ -220,8 +219,13 @@ export interface ConnectOptions {
 
 export async function connectToArena(opts: ConnectOptions = {}): Promise<NetClient> {
   const endpoint = opts.endpoint ?? defaultEndpoint();
-  const client = new Colyseus.Client(endpoint);
+  const client = new Client(endpoint);
   const room = await client.joinOrCreate<ArenaState>(ROOM_NAME, { name: opts.name });
+  // The 0.18 SDK auto-reconnects by default. The server has no
+  // allowReconnection, and our own disconnect flow (build-info poll +
+  // ReconnectOverlay) rejoins from scratch, so keep drops terminal; it also
+  // stops queued stale inputs from replaying after a reconnect.
+  room.reconnection.enabled = false;
 
   let handlers: NetClientHandlers = {};
   const $ = getStateCallbacks(room);

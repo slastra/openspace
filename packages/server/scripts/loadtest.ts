@@ -14,7 +14,7 @@
  * SPAWN_INTERVAL_MS) a spawn-unit message. No prediction, no rendering —
  * just enough traffic to mimic a busy player.
  */
-import * as Colyseus from "colyseus.js";
+import { Client } from "@colyseus/sdk";
 import {
   ROOM_NAME,
   SERVER_PORT,
@@ -26,8 +26,6 @@ import {
 
 const N_CLIENTS = parseInt(process.env.CLIENTS ?? "14", 10);
 const ENDPOINT = process.env.ENDPOINT ?? `ws://localhost:${SERVER_PORT}`;
-// One SIGINT/SIGTERM listener per bot — bump above default 10 cap.
-process.setMaxListeners(N_CLIENTS + 4);
 const REPORT_INTERVAL_MS = 2000;
 const BOT_TICK_MS = 1000 / TICK_RATE_HZ;
 const SPAWN_INTERVAL_MS = UNIT_SPAWN_COOLDOWN_MS;
@@ -54,9 +52,10 @@ async function spawnBot(id: number): Promise<BotStats> {
     inputsSent: 0,
     spawnsSent: 0,
   };
-  const client = new Colyseus.Client(ENDPOINT);
+  const client = new Client(ENDPOINT);
   try {
     const room = await client.joinOrCreate(ROOM_NAME, { name: stats.name });
+    room.reconnection.enabled = false;
     stats.connected = true;
 
     room.onStateChange(() => {
@@ -95,13 +94,28 @@ async function spawnBot(id: number): Promise<BotStats> {
       }
     }, BOT_TICK_MS);
 
-    process.on("SIGINT", () => clearInterval(inputTimer));
-    process.on("SIGTERM", () => clearInterval(inputTimer));
+    shutdownHooks.push(async () => {
+      clearInterval(inputTimer);
+      await room.leave().catch(() => {});
+    });
   } catch (e) {
     stats.err = e instanceof Error ? e.message : String(e);
   }
   return stats;
 }
+
+/** Per-bot teardown, run once on SIGINT/SIGTERM. Registering a signal
+ *  listener disables Node's default exit, so the handler must exit itself. */
+const shutdownHooks: (() => Promise<void>)[] = [];
+let shuttingDown = false;
+async function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  await Promise.allSettled(shutdownHooks.map((hook) => hook()));
+  process.exit(0);
+}
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
 
 async function main() {
   console.log(

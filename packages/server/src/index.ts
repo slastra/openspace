@@ -1,4 +1,4 @@
-import { createServer } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
 import { Server } from "colyseus";
@@ -42,7 +42,10 @@ async function tryServeFile(absPath: string): Promise<{ data: Buffer; type: stri
 // from every disconnected client.
 const BUILD_INFO_JSON = JSON.stringify(BUILD_INFO);
 
-const httpServer = createServer(async (req, res) => {
+// Static client + /build-info. Colyseus 0.18 owns the HTTP server's request
+// handling: its router (matchmaking etc.) answers first and everything else
+// falls through to the `express` hook below, where this is mounted.
+async function serveStatic(req: IncomingMessage, res: ServerResponse) {
   if (!req.url || req.method !== "GET") {
     res.writeHead(405).end();
     return;
@@ -81,10 +84,15 @@ const httpServer = createServer(async (req, res) => {
     return;
   }
   res.writeHead(404).end("not found");
-});
+}
+
+const httpServer = createServer();
 
 const gameServer = new Server({
   transport: new WebSocketTransport({ server: httpServer }),
+  express: (app) => {
+    app.use(serveStatic);
+  },
 });
 
 gameServer.define(ROOM_NAME, ArenaRoom);

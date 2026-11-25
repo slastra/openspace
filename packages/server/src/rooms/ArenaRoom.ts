@@ -68,7 +68,7 @@ import { createTickGrids } from "../spatial.js";
 /** Width of the static perimeter walls in world units. */
 const WALL_THICKNESS = 40;
 
-export class ArenaRoom extends Room<ArenaState> {
+export class ArenaRoom extends Room<{ state: ArenaState }> {
   override maxClients = MAX_PLAYERS_PER_ROOM;
   override state = new ArenaState();
   private physics!: PhysicsWorld;
@@ -125,8 +125,8 @@ export class ArenaRoom extends Room<ArenaState> {
     this.buildWorldWalls();
     for (let i = 0; i < ASTEROID_COUNT; i++) this.spawnAsteroid();
 
-    this.setSimulationInterval(() => this.update(), 1000 / TICK_RATE_HZ);
-    this.setPatchRate(1000 / SNAPSHOT_RATE_HZ);
+    this.setTimestep(() => this.update(), 1000 / TICK_RATE_HZ);
+    this.patchRate = 1000 / SNAPSHOT_RATE_HZ;
 
     this.onMessage<PlayerInput>("input", (client, payload) => {
       if (!isValidInput(payload)) return;
