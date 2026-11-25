@@ -35,12 +35,12 @@ import {
   PLAYER_MAX_HP,
   Player,
   PlayerInput,
-  SNAPSHOT_RATE_HZ,
   STARTING_CREDITS,
   STARTING_SUPPLY_CAP,
   STRUCTURE_KIND_META,
   SpawnUnitMessage,
   Structure,
+  TICK_MS,
   TICK_RATE_HZ,
   UNIT_KIND_META,
   UNIT_SPAWN_COOLDOWN_MS,
@@ -84,7 +84,7 @@ export class ArenaRoom extends Room<{ state: ArenaState }> {
   /** Per-player wall-clock time of last accepted emote. Drives the
    *  EMOTE_COOLDOWN_MS rate limit so a player can't spam the feed. */
   private lastEmoteAt = new Map<string, number>();
-  /** Wall-clock timestamps at which a fresh asteroid should spawn. */
+  /** Simulation-clock times (serverTime) at which a fresh asteroid should spawn. */
   private pendingAsteroidRespawnAt: number[] = [];
   /** Per-player Rapier collision-group bit (0..14). Drives the wall
    *  owner-passthrough filter — see physics.ts. Bits are recycled from
@@ -101,6 +101,8 @@ export class ArenaRoom extends Room<{ state: ArenaState }> {
    *  AOI_HYSTERESIS_U` so units skating along the boundary don't pop in
    *  and out every few ticks. */
   private visibleByClient = new Map<string, Set<string>>();
+  /** Wall-clock origin of the simulation clock (see `update`). */
+  private simEpochMs = 0;
   /** Mutable per-tick side tables threaded into `simulateTick`. */
   private simCtx: SimContext = {
     creditAccrual: new Map(),
@@ -110,6 +112,7 @@ export class ArenaRoom extends Room<{ state: ArenaState }> {
     pendingRespawnSet: new Set(),
     formationPhaseByOwner: new Map(),
     lastEntityPos: new Map(),
+    inputCursors: new Map(),
     grids: createTickGrids(),
     tickIndex: 0,
     unitCooldownById: new Map(),
@@ -125,8 +128,17 @@ export class ArenaRoom extends Room<{ state: ArenaState }> {
     this.buildWorldWalls();
     for (let i = 0; i < ASTEROID_COUNT; i++) this.spawnAsteroid();
 
-    this.setTimestep(() => this.update(), 1000 / TICK_RATE_HZ);
-    this.patchRate = 1000 / SNAPSHOT_RATE_HZ;
+    // Fixed-dt loop with a framework accumulator: every step advances the
+    // sim by exactly TICK_DT and serverTime by exactly TICK_MS, and late
+    // frames run catch-up steps instead of stretching one. Patches go out
+    // from update() itself (patchRate null), so every snapshot carries
+    // exactly one tick and snapshot timestamps are evenly spaced.
+    // Order matters: setting patchRate to null with no simulation loop yet
+    // makes Colyseus start its own clock-tick interval, which steals delta
+    // time from the fixed-step accumulator (the sim ran at ~8 Hz).
+    this.simEpochMs = performance.now();
+    this.setFixedTimestep((step) => this.update(step.tick), TICK_RATE_HZ);
+    this.patchRate = null;
 
     this.onMessage<PlayerInput>("input", (client, payload) => {
       if (!isValidInput(payload)) return;
@@ -430,6 +442,7 @@ export class ArenaRoom extends Room<{ state: ArenaState }> {
     this.state.players.delete(client.sessionId);
     this.state.leaderboard.delete(client.sessionId);
     this.inputQueues.delete(client.sessionId);
+    this.simCtx.inputCursors.delete(client.sessionId);
     this.lastUnitSpawnAt.delete(client.sessionId);
     this.lastEmoteAt.delete(client.sessionId);
     this.visibleByClient.delete(client.sessionId);
@@ -484,8 +497,11 @@ export class ArenaRoom extends Room<{ state: ArenaState }> {
     console.log(`[ArenaRoom ${this.roomId}] disposed`);
   }
 
-  private update() {
-    const now = performance.now();
+  private update(tick: number) {
+    // Simulation clock, not wall time: positions advance by a fixed dt per
+    // tick, so timestamps must too or client interpolation sees the
+    // timer jitter as speed changes.
+    const now = this.simEpochMs + (tick + 1) * TICK_MS;
     this.state.serverTime = now;
     const result = simulateTick(
       this.state,
@@ -522,6 +538,9 @@ export class ArenaRoom extends Room<{ state: ArenaState }> {
     }
     this.recomputeLeaderboard();
     this.recomputeViews();
+    // One snapshot per tick (patchRate is null, see onCreate), sent before
+    // this tick's events so clients see the state an event refers to.
+    this.broadcastPatch();
     // Drain GameEvents emitted this tick. Most go via room.broadcast()
     // (kills, emotes); events with `targetSessionId` set route to a
     // single client (base-attack alerts) so spectators don't see "X's

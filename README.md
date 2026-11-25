@@ -42,7 +42,11 @@ after 30s).
   `useDefineForClassFields: false`.
 - **DPR drift**: camera math uses `app.canvas.getBoundingClientRect()`,
   not `renderer.width / resolution` (Firefox disagrees).
-- **Server time monotonic**: `state.serverTime = performance.now()`.
+- **Server time is the simulation clock**: `state.serverTime` advances by
+  exactly `TICK_MS` per tick (`setFixedTimestep`), and the room sends one
+  patch per tick from `update()`. Don't stamp it with wall time: physics
+  steps a fixed dt, so wall-clock stamps turn timer jitter into visible
+  speed changes in client interpolation.
 - **Rapier init is async**: cached at process scope, shared across
   rooms.
 - **Body cleanup is mandatory**: `removeRigidBody` on every destroy,

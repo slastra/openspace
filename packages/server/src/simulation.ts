@@ -141,6 +141,9 @@ export interface SimContext {
    *  computed from positions matches what the client interpolates between
    *  (vs raw bodyVelocity which can disagree after collisions). */
   lastEntityPos: Map<string, { x: number; y: number }>;
+  /** Per-player input cursor (last applied input + coast debt). See
+   *  `applyPlayerInputs`. The room deletes a player's entry on leave. */
+  inputCursors: Map<string, InputCursor>;
   /** Per-tick spatial indexes — replaces O(N) walks in target acquisition
    *  and unit separation with cell-local scans. Rebuilt at the top of
    *  every `simulateTick`. */
@@ -178,7 +181,7 @@ export function simulateTick(
 ): TickResult {
   ctx.tickIndex = (ctx.tickIndex + 1) | 0;
   ctx.pendingEvents.length = 0;
-  applyPlayerInputs(state, inputQueues, bodyRefs);
+  applyPlayerInputs(state, inputQueues, bodyRefs, ctx.inputCursors);
   applySupplyDeactivation(state);
   rebuildTickGrids(ctx.grids, state);
   runUnitAI(state, bodyRefs, ctx);
@@ -199,32 +202,65 @@ export function simulateTick(
   return cullAndRespawn(state, bodyRefs, phys, ctx);
 }
 
+/** Queued inputs beyond this many are dropped (acked unsimulated) so a burst
+ *  after a network stall can't leave the ship replaying stale intent. */
+const MAX_INPUT_BACKLOG = 3;
+
+/** Per-player input cursor. `debt` counts ticks the server coasted on `last`
+ *  because the queue was empty; each is repaid by acking one later input
+ *  without simulating it, so the ship takes exactly one step per client
+ *  input, the same as the client's predictor. */
+export interface InputCursor {
+  last: PlayerInput | null;
+  debt: number;
+}
+
 function applyPlayerInputs(
   state: ArenaState,
   queues: Map<string, PlayerInput[]>,
   bodyRefs: Map<string, BodyRef>,
+  cursors: Map<string, InputCursor>,
 ) {
   for (const [sessionId, player] of state.players) {
-    const queue = queues.get(sessionId);
+    const queue = queues.get(sessionId) ?? [];
     const ref = bodyRefs.get(sessionId);
     if (!ref) continue;
+    let cursor = cursors.get(sessionId);
+    if (!cursor) {
+      cursor = { last: null, debt: 0 };
+      cursors.set(sessionId, cursor);
+    }
 
     if (player.hp <= 0) {
-      if (queue) {
-        for (const input of queue) player.lastProcessedInputSeq = input.seq;
-        queue.length = 0;
-      }
+      for (const input of queue) player.lastProcessedInputSeq = input.seq;
+      queue.length = 0;
+      cursor.last = null;
+      cursor.debt = 0;
       setBodyVelocity(ref.body, 0, 0);
       continue;
     }
 
-    if (!queue || queue.length === 0) continue;
-
-    // Use the latest queued input. Older queued inputs are still acked so
-    // the client buffer drains, but only the latest target affects velocity.
-    const latest = queue[queue.length - 1]!;
-    for (const input of queue) player.lastProcessedInputSeq = input.seq;
-    queue.length = 0;
+    let input: PlayerInput;
+    if (queue.length === 0) {
+      // Starved (late packet): coast on the last intent rather than
+      // stalling the ship for everyone watching it, and owe a step.
+      if (!cursor.last) continue;
+      input = cursor.last;
+      cursor.debt = Math.min(cursor.debt + 1, MAX_INPUT_BACKLOG);
+    } else {
+      // Repay coasted steps from any surplus, then trim a stale backlog.
+      while (cursor.debt > 0 && queue.length > 1) {
+        player.lastProcessedInputSeq = queue.shift()!.seq;
+        cursor.debt--;
+      }
+      while (queue.length > MAX_INPUT_BACKLOG) {
+        player.lastProcessedInputSeq = queue.shift()!.seq;
+      }
+      input = queue.shift()!;
+      player.lastProcessedInputSeq = input.seq;
+      cursor.last = input;
+    }
+    const latest = input;
 
     const dashMult = player.dashing ? DASH_SPEED_MULTIPLIER : 1;
     const fleetMult = playerFleetDragFactor(player.ownedUnitCount);
