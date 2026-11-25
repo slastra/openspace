@@ -123,6 +123,13 @@ export function startGame({ renderer, input, net }: GameDeps) {
   const snapshotArrivalTimes: number[] = [];
   let lastSeenServerTime = 0;
   const updateOffset = (snapServerTime: number) => {
+    // Colyseus delivers each changed entity in a snapshot through its own
+    // callback, so this runs once per entity with the same `now` and
+    // `snapServerTime`. Filter to one sample per distinct snapshot: running
+    // the EMA per entity compounds the gain (1 - 0.9^K for K changed
+    // entities), so with a big swarm the offset tracked raw packet jitter
+    // and every interpolated entity wobbled against the predicted ship.
+    if (snapServerTime === lastSeenServerTime) return;
     const now = performance.now();
     const offset = now - snapServerTime;
     if (serverOffset === null) {
@@ -132,18 +139,12 @@ export function startGame({ renderer, input, net }: GameDeps) {
     } else {
       serverOffset = serverOffset * 0.99 + offset * 0.01;
     }
-    // Sample once per distinct snapshot — Colyseus delivers each entity in
-    // a snapshot through its own callback, so multiple updateOffset calls
-    // share the same `now` AND `snapServerTime`. Recording one sample per
-    // entity collapses the variance to zero (RTT spread always shows 0).
-    if (snapServerTime !== lastSeenServerTime) {
-      if (lastSeenServerTime !== 0) {
-        pushBounded(snapshotIntervals, snapServerTime - lastSeenServerTime, 60);
-      }
-      lastSeenServerTime = snapServerTime;
-      pushBounded(snapshotArrivalTimes, now, 60);
-      pushBounded(offsetSamples, offset, 60);
+    if (lastSeenServerTime !== 0) {
+      pushBounded(snapshotIntervals, snapServerTime - lastSeenServerTime, 60);
     }
+    lastSeenServerTime = snapServerTime;
+    pushBounded(snapshotArrivalTimes, now, 60);
+    pushBounded(offsetSamples, offset, 60);
   };
 
   // Hold-to-spawn: bindings checked per frame in the ticker. Tapping fires

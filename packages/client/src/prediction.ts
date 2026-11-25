@@ -46,7 +46,9 @@ export type ObstacleProvider = () => Iterable<PredictedObstacle>;
 export class LocalPrediction {
   private nextSeq = 1;
   private accumulator = 0;
-  private buffer: PlayerInput[] = [];
+  /** Unacked inputs, each with the speed multiplier (dash × fleet drag) it
+   *  was predicted with, so reconcile replays them at the same speed. */
+  private buffer: { input: PlayerInput; speedMultiplier: number }[] = [];
 
   private serverX: number;
   private serverY: number;
@@ -122,7 +124,7 @@ export class LocalPrediction {
         targetX: target.x,
         targetY: target.y,
       };
-      this.buffer.push(input);
+      this.buffer.push({ input, speedMultiplier });
       out.push(input);
 
       const next = stepPlayer(
@@ -178,15 +180,19 @@ export class LocalPrediction {
     this.lastAckSeq = lastProcessedInputSeq;
 
     // Drop inputs the server has already accounted for.
-    this.buffer = this.buffer.filter((i) => i.seq > lastProcessedInputSeq);
+    this.buffer = this.buffer.filter((b) => b.input.seq > lastProcessedInputSeq);
 
     // Replay still-pending inputs from the server's authoritative pos.
     // Each replay step gets the same obstacle resolution as live prediction
     // so we end up at the same place the live tick would have produced.
     let state = { x, y, rotation };
     const obstacles = this.getObstacles();
-    for (const input of this.buffer) {
-      const next = stepPlayer(state, input);
+    // Replay at the multiplier each input was predicted with. Replaying at
+    // 1× put the reconciled position ahead of live prediction by
+    // (1 - fleetDrag) per pending input, so the ship lurched on every
+    // pending-count change, worse the bigger the swarm (and 2× off on dash).
+    for (const { input, speedMultiplier } of this.buffer) {
+      const next = stepPlayer(state, input, TICK_DT, speedMultiplier);
       const resolved = resolveObstacles(next.x, next.y, obstacles);
       state = { x: resolved.x, y: resolved.y, rotation: next.rotation };
     }
